@@ -1,0 +1,31 @@
+@baseUrl = http://localhost:5236
+@token = TOKEN_DEL_PROPIETARIO
+@tokenAdmin = TOKEN_DEL_ADMIN
+@reservaId = 1
+@pagoId = UUID_DE_PAGO
+@rowVersion = VERSION_REAL_EN_BASE64
+
+### 1. Crear orden; abrir urlAprobacion y aprobar en PayPal con comprador Sandbox
+POST {{baseUrl}}/api/reservas/{{reservaId}}/paypal/orden
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"rowVersion":"{{rowVersion}}"}
+
+### 2. Capturar después de aprobación; no enviar importe ni orden del navegador
+POST {{baseUrl}}/api/reservas/{{reservaId}}/paypal/captura
+Authorization: Bearer {{token}}
+
+### 3. Estado propio y conciliación si corresponde
+GET {{baseUrl}}/api/reservas/{{reservaId}}/paypal
+Authorization: Bearer {{token}}
+
+### 4. Ventas confirmadas Sandbox; no incluyen compras simuladas históricas
+GET {{baseUrl}}/api/admin/ventas/resumen?entorno=Sandbox
+Authorization: Bearer {{tokenAdmin}}
+
+### 5. Conciliar sin iniciar un cobro, solo administrador
+POST {{baseUrl}}/api/admin/pagos/paypal/{{pagoId}}/conciliacion
+Authorization: Bearer {{tokenAdmin}}
+
+### Webhook: configurar en PayPal según PAYPAL.md; no fabricar eventos sin firma

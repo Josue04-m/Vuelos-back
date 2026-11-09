@@ -1,0 +1,188 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Authentication;
+using Vuelos_Backend.Controllers.Administracion;
+using Vuelos_Backend.Interface.Catalogos;
+using Vuelos_Backend.Middleware;
+using Vuelos_Backend.Models.Asientos;
+using Vuelos_Backend.Models.Aviones;
+using Vuelos_Backend.Models.Catalogos;
+using Vuelos_Backend.Models.Catalogos.DTOs;
+using Vuelos_Backend.Services.Catalogos;
+using Vuelos_Backend.Swagger;
+
+internal static class ImportacionAvionesChecks
+{
+    private static int count;
+    private static readonly CancellationToken Ct=CancellationToken.None;
+    private const string Header="modelo;codigo_iata;codigo_icao;matricula;capacidad_total;cantidad_primera_clase;cantidad_segunda_clase;cantidad_tercera_clase;letras_por_fila\n";
+    private const string Row="Modelo demo;320;A320;EC-DEMO1;6;1;2;3;ABC\n";
+    private static void Check(bool ok,string label){if(!ok)throw new Exception(label);count++;}
+    private static ImportarAvionesRequest Request(string text,string file="planes.csv")=>Request(Encoding.UTF8.GetBytes(text),file);
+    private static ImportarAvionesRequest Request(byte[] bytes,string file)=>new(){Archivo=new FormFile(new MemoryStream(bytes),0,bytes.Length,"archivo",file),PrimeraClaseId=1,SegundaClaseId=2,TerceraClaseId=3};
+    private static async Task<MemoryCatalogosRepository> Repo()
+    {
+        var r=new MemoryCatalogosRepository(); var service=new CatalogosAdminService(r,TimeProvider.System);
+        foreach(var name in new[]{"Primera Clase","Segunda Clase","Tercera Clase"})await service.GuardarCategoriaAsync(null,new(){Nombre=name},Ct);
+        return r;
+    }
+    private static async Task Error(Func<Task> action,string codigo)
+    {try{await action();throw new Exception("Falta rechazo: "+codigo);}catch(CatalogoOperacionException e){Check(e.Codigo==codigo,codigo);}}
+    public static async Task RunAsync()
+    {
+        var repo=await Repo(); var service=new ImportacionAvionesService(repo);
+        var before=repo.Created;
+        var preview=await service.ValidarAsync(Request(Header+Row),Ct);
+        Check(preview.PuedeImportar && preview.TotalFilas==1 && preview.TotalAsientos==6 && repo.Created==before,"vista previa no escribe");
+        var imported=await service.ImportarAsync(Request(Header+Row),Ct);
+        Check(imported.Estado=="importado" && imported.AvionesImportados==1 && imported.AsientosImportados==6,"importa avión y asientos exactos");
+        var seats=await repo.BuscarAsync<AsientoFisico>(new(){TamanoPagina=100,IncluirInactivos=true},Ct);
+        Check(string.Join(",",seats.Elementos.Select(a=>a.CodigoAsiento))=="1A,1B,1C,2A,2B,2C","códigos generados por lógica compartida");
+        Check(seats.Elementos.Count(a=>a.CategoriaId==1)==1 && seats.Elementos.Count(a=>a.CategoriaId==2)==2 && seats.Elementos.Count(a=>a.CategoriaId==3)==3,"distribución por clases");
+        before=repo.Created;
+        var repeated=await service.ImportarAsync(Request(Header+Row),Ct);
+        Check(repeated.Estado=="ya_importados" && repeated.Mensaje.Contains("ya se importaron") && repeated.AvionesImportados==0 && repo.Created==before,"reimportación informa y no escribe");
+        var lower=await service.ValidarAsync(Request(Header+Row.Replace("EC-DEMO1"," ec-demo1 ")),Ct);
+        Check(lower.Estado=="ya_importados","matrículas normalizadas");
+        var mixed=await service.ImportarAsync(Request(Header+Row+Row.Replace("EC-DEMO1","EC-DEMO2")),Ct);
+        Check(mixed.Estado=="conflicto_matriculas" && repo.Created==before && mixed.Errores.Single().Fila==2,"duplicados parciales rechazan toda la carga");
+        var avion=(await repo.ObtenerAsync<Avion>(imported.Filas[0].AvionId!.Value,Ct))!;
+        avion.Activo=false; await repo.ActualizarAsync(avion,Ct);
+        Check((await service.ValidarAsync(Request(Header+Row),Ct)).Estado=="ya_importados","incluye matrículas inactivas");
+
+        var clean=await Repo(); var parser=new ImportacionAvionesService(clean);
+        foreach(var text in new[]{Header+Row+Row, Header+Row.Replace(";6;1;2;3;",";7;1;2;3;"),Header+Row.Replace(";6;1;2;3;",";6;-1;2;5;"),Header+Row.Replace(";ABC",";ABA"), Header+Row.Replace("Modelo demo",""),Header+Row.Replace(";6;1;2;3;",";1001;1;2;998;"),Header+Row.Replace(";6;1;2;3;",";6.0;1;2;3;"), Header+"faltan;columnas\n"})
+        {
+            var result=await parser.ImportarAsync(Request(text),Ct);
+            Check(result.Estado=="errores_validacion" && result.Errores.Count>0 && (await clean.BuscarAsync<Avion>(new(),Ct)).Total==0,"archivo inválido no guarda: "+result.Errores[0].Campo);
+        }
+        Check((await parser.ValidarAsync(Request(Header),Ct)).Errores.Count>0,"archivo solo encabezados no importa");
+        await Error(()=>parser.ValidarAsync(Request(Header+Row,"planes.xlsx"),Ct),"archivo_aviones_invalido");
+        await Error(()=>parser.ValidarAsync(Request(Row),Ct),"archivo_aviones_invalido");
+        await Error(()=>parser.ValidarAsync(Request(Header.Replace("modelo;","modelo, ")+Row),Ct),"archivo_aviones_invalido");
+        await Error(()=>parser.ValidarAsync(Request(new byte[]{0xFF,0xFF},"planes.csv"),Ct),"archivo_aviones_invalido");
+        await Error(()=>parser.ValidarAsync(Request(new byte[ImportacionAvionesService.MaxBytes+1],"planes.csv"),Ct),"archivo_aviones_invalido");
+        await Error(()=>parser.ValidarAsync(Request(Header+"\"comillas sin cerrar"),Ct),"archivo_aviones_invalido");
+        await Error(()=>parser.ValidarAsync(Request(Header+string.Concat(Enumerable.Range(1,501).Select(i=>Row.Replace("EC-DEMO1","EC-"+i)))),Ct),"archivo_aviones_invalido");
+        Check((await parser.ValidarAsync(Request(Header+string.Concat(Enumerable.Range(1,101).Select(i=>$"Modelo;;;EC-{i};1000;0;0;1000;ABC\n"))),Ct)).Errores.Any(e=>e.Mensaje.Contains("100000")),"límite total de asientos");
+        var quoted=await parser.ValidarAsync(Request("\uFEFF"+Header+Row.Replace("Modelo demo","\"Modelo; con \"\"comillas\"\"\"")),Ct);
+        Check(quoted.PuedeImportar && quoted.Filas[0].Modelo=="Modelo; con \"comillas\"","BOM, campos entrecomillados y separador dentro de texto");
+        var invalidClasses=await parser.ValidarAsync(Request(Header+Row) with {TerceraClaseId=2},Ct);
+        Check(invalidClasses.Errores.Any(e=>e.Campo=="clases"),"categorías no repetidas");
+        invalidClasses=await parser.ValidarAsync(Request(Header+Row) with {TerceraClaseId=99},Ct);
+        Check(invalidClasses.Errores.Any(e=>e.Mensaje.Contains("99")),"categoría inexistente");
+        var category=(await clean.ObtenerAsync<CategoriaAsiento>(3,Ct))!; category.Activo=false; await clean.ActualizarAsync(category,Ct);
+        Check((await parser.ValidarAsync(Request(Header+Row),Ct)).Errores.Any(e=>e.Campo=="clases"),"categoría inactiva");
+
+        var zero=await Repo(); var zeros=new ImportacionAvionesService(zero);
+        var numeric=await zeros.ImportarAsync(Request(Header+"Modelo;;;EC-NUM;3;0;0;3;\n"),Ct);
+        var numericSeats=await zero.BuscarAsync<AsientoFisico>(new(){TamanoPagina=100},Ct);
+        Check(numeric.Estado=="importado" && string.Join(",",numericSeats.Elementos.Select(a=>a.CodigoAsiento))=="1,2,3" && numericSeats.Elementos.All(a=>a.CategoriaId==3),"cero asientos por clase y códigos numéricos");
+        var rollback=await Repo(); rollback.FallarEnLoteAsientos=2;
+        await Error(()=>new ImportacionAvionesService(rollback).ImportarAsync(Request(Header+Row+Row.Replace("EC-DEMO1","EC-DEMO2")),Ct),"fallo_asientos");
+        Check((await rollback.BuscarAsync<Avion>(new(),Ct)).Total==0 && (await rollback.BuscarAsync<AsientoFisico>(new(),Ct)).Total==0,"fallo en segundo avión revierte todos los aviones y asientos");
+        var concurrent=await Repo(); var cs=new ImportacionAvionesService(concurrent);
+        var attempts=await Task.WhenAll(cs.ImportarAsync(Request(Header+Row),Ct),cs.ImportarAsync(Request(Header+Row),Ct));
+        Check(attempts.Count(a=>a.Estado=="importado")==1 && attempts.Count(a=>a.Estado=="ya_importados")==1 && (await concurrent.BuscarAsync<Avion>(new(),Ct)).Total==1,"dos confirmaciones serializadas no duplican");
+        var raceRepo=await Repo(); var raceService=new ImportacionAvionesService(raceRepo);
+        Check((await raceService.ValidarAsync(Request(Header+Row),Ct)).PuedeImportar,"prevalidación disponible");
+        await new CatalogosAdminService(raceRepo,TimeProvider.System).CrearAvionAsync(new(){Modelo="Alta manual",Matricula="EC-DEMO1",CapacidadTotal=2,CategoriaId=1},Ct);
+        Check((await raceService.ImportarAsync(Request(Header+Row),Ct)).Estado=="ya_importados","confirmación revalida matrícula creada después de vista previa");
+        await using var file=new FileStream("docs/planes.csv",FileMode.Open,FileAccess.Read,FileShare.ReadWrite);
+        using var copy=new MemoryStream(); await file.CopyToAsync(copy);
+        var real=await new ImportacionAvionesService(await Repo()).ValidarAsync(Request(copy.ToArray(),"planes.csv"),Ct);
+        Check(real.PuedeImportar && real.TotalFilas>0 && real.TotalAsientos==real.Filas.Sum(f=>f.CapacidadTotal),"CSV del usuario valida sin importarlo en SQL");
+        await HttpChecks();
+        await MetadatosChecks();
+        Console.WriteLine($"OK: {count} comprobaciones de importación de aviones; sin SQL Server.");
+    }
+
+    private static async Task MetadatosChecks()
+    {
+        var repo=await Repo();var service=new ImportacionAvionesService(repo);
+        var source=Row.Replace("Modelo demo"," Modelo Ā ").Replace(";320;A320;EC-DEMO1;",";at4;at43; ec-meta1 ;");
+        var preview=await service.ValidarAsync(Request(Header+source),Ct);
+        Check(preview.PuedeImportar && preview.Filas[0].CodigoIata=="AT4" && preview.Filas[0].CodigoIcao=="AT43","códigos de modelo normalizados en vista previa");
+        using(var json=JsonDocument.Parse(preview.Filas[0].DatosOrigenJson!))
+            Check(json.RootElement.EnumerateObject().Count()==9 && json.RootElement.GetProperty("modelo").GetString()==" Modelo Ā " && json.RootElement.GetProperty("matricula").GetString()==" ec-meta1 ","conserva los nueve valores originales y espacios en JSON");
+        var result=await service.ImportarAsync(Request(Header+source+source.Replace("ec-meta1","ec-meta2")),Ct);
+        Check(result.AvionesImportados==2 && result.AsientosImportados==12,"varias aeronaves pueden compartir códigos de modelo sin duplicar matrícula");
+        var plane=(await repo.ObtenerAsync<Avion>(result.Filas[0].AvionId!.Value,Ct))!;
+        Check(plane.Modelo=="Modelo Ā" && plane.Matricula=="EC-META1" && plane.CodigoIata=="AT4" && plane.CodigoIcao=="AT43","entidad recibe modelo Unicode y códigos completos");
+        Check(plane.CantidadPrimeraClase==1 && plane.CantidadSegundaClase==2 && plane.CantidadTerceraClase==3 && plane.LetrasPorFila=="ABC" && plane.DatosOrigenJson==preview.Filas[0].DatosOrigenJson,"configuración de las tres clases y letras persistidas");
+        var admin=await new CatalogosAdminService(repo,TimeProvider.System).ObtenerAvionAsync(plane.AvionId,Ct);
+        Check(admin.Metadatos is {CodigoIata:"AT4",CodigoIcao:"AT43",CantidadPrimeraClase:1,CantidadSegundaClase:2,CantidadTerceraClase:3,LetrasPorFila:"ABC"} && admin.Metadatos.DatosOrigenJson==plane.DatosOrigenJson,"GET devuelve metadatos del avión");
+        var before=repo.Created;var repeated=await service.ImportarAsync(Request(Header+source),Ct);
+        Check(repeated.Estado=="ya_importados" && repo.Created==before,"metadatos nuevos no habilitan duplicados ni sobrescrituras");
+        var emptyRepo=await Repo();await new ImportacionAvionesService(emptyRepo).ImportarAsync(Request(Header+"Modelo;;;EC-EMPTY;1;0;0;1;\n"),Ct);
+        var empty=(await emptyRepo.ObtenerAsync<Avion>(1,Ct))!;
+        Check(empty.CodigoIata==null && empty.CodigoIcao==null && empty.LetrasPorFila=="" && empty.CantidadPrimeraClase==0,"códigos vacíos son NULL; cero asientos y letras vacías se conservan");
+        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        Check(!db.Database.HasPendingModelChanges(),"modelo de aviones coincide con snapshot");
+        var migrations=db.GetService<IMigrationsAssembly>();var entry=migrations.Migrations.Single(m=>m.Key.EndsWith("_AvionesDatosCompletos"));var migration=migrations.CreateMigration(entry.Value,db.Database.ProviderName!);
+        Check(migration.UpOperations.OfType<AddColumnOperation>().Count()==7 && migration.UpOperations.OfType<AddColumnOperation>().All(c=>c.IsNullable),"siete columnas nullable preservan registros anteriores");
+        Check(migration.UpOperations.OfType<AlterColumnOperation>().Single().ColumnType=="nvarchar(100)","modelo ampliado a Unicode");
+        Check(migration.UpOperations.OfType<AddCheckConstraintOperation>().Count()==2 && !migration.UpOperations.Any(o=>o is DropTableOperation or DropColumnOperation or UpdateDataOperation or DeleteDataOperation),"validación SQL de JSON y suma de clases; sin borrados");
+        Check(!migration.UpOperations.OfType<CreateIndexOperation>().Any(i=>i.IsUnique) && !migration.UpOperations.OfType<AddUniqueConstraintOperation>().Any(),"IATA e ICAO de modelo no son únicos por aeronave");
+        Check(migration.DownOperations.First() is SqlOperation guard && guard.Sql.Contains("THROW") && guard.Sql.Contains("datos_origen_json"),"Down protege metadatos y Unicode");
+        var sql=db.GetService<IMigrator>().GenerateScript("AeropuertosDatosCompletos","AvionesDatosCompletos");
+        Check(sql.Contains("[codigo_iata] nvarchar(3) NULL") && sql.Contains("CK_aviones_distribucion_importada") && sql.Contains("ISJSON") && !sql.Contains("DROP TABLE"),"SQL incremental generado sin ejecutar");
+        Check(db.Database.GetDbConnection().State==System.Data.ConnectionState.Closed,"sin conexión a SQL Server");
+    }
+
+    private static async Task HttpChecks()
+    {
+        var service=new ImportacionAvionesService(await Repo());
+        var b=WebApplication.CreateBuilder();b.Logging.ClearProviders();b.WebHost.UseUrls("http://127.0.0.1:0");
+        b.Services.AddSingleton<IImportacionAvionesService>(service);b.Services.AddControllers().AddApplicationPart(typeof(ImportacionAvionesController).Assembly);
+        b.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions,RoleAuth>("test",_=>{});b.Services.AddAuthorization(PoliticasAcceso.Configurar);
+        b.Services.AddProblemDetails();b.Services.AddExceptionHandler<ApiExceptionHandler>();b.Services.AddEndpointsApiExplorer();b.Services.AddSwaggerGen(DocumentacionApi.Configurar);
+        await using var app=b.Build();app.UseExceptionHandler();app.UseSwagger();app.UseAuthentication();app.UseAuthorization();app.MapControllers();await app.StartAsync();
+        using var http=new HttpClient(){BaseAddress=new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
+        async Task<HttpResponseMessage> Send(string route,string text=Header+Row)
+        {
+            using var form=new MultipartFormDataContent();form.Add(new ByteArrayContent(Encoding.UTF8.GetBytes(text)),"archivo","planes.csv");
+            form.Add(new StringContent("1"),"primeraClaseId");form.Add(new StringContent("2"),"segundaClaseId");form.Add(new StringContent("3"),"terceraClaseId");
+            return await http.PostAsync(route,form);
+        }
+        const string path="/api/admin/aviones/importacion";
+        foreach(var route in new[]{path,path+"/validar"})Check((await Send(route)).StatusCode==HttpStatusCode.Unauthorized,"sin sesión 401 "+route);
+        http.DefaultRequestHeaders.Add("Authorization","Bearer cliente");
+        foreach(var route in new[]{path,path+"/validar"})Check((await Send(route)).StatusCode==HttpStatusCode.Forbidden,"cliente 403 "+route);
+        http.DefaultRequestHeaders.Remove("Authorization");http.DefaultRequestHeaders.Add("Authorization","Bearer admin");
+        Check((await Send(path+"/validar")).StatusCode==HttpStatusCode.OK,"vista previa multipart admin");
+        Check((await Send(path)).StatusCode==HttpStatusCode.OK,"confirmación multipart admin");
+        var repeated=await Send(path); var body=await repeated.Content.ReadFromJsonAsync<ImportacionAvionesResponse>();
+        Check(repeated.StatusCode==HttpStatusCode.OK && body!.Estado=="ya_importados" && body.AvionesImportados==0,"HTTP ya se importaron sin duplicar");
+        Check((await Send(path,Header+Row+Row.Replace("EC-DEMO1","EC-DEMO2"))).StatusCode==HttpStatusCode.Conflict,"matrículas parcialmente repetidas HTTP 409");
+        Check((await Send(path,Header+Row.Replace(";ABC",";AAA"))).StatusCode==HttpStatusCode.BadRequest,"datos inválidos HTTP 400");
+        using var swagger=JsonDocument.Parse(await http.GetStringAsync("/swagger/v1/swagger.json"));
+        foreach(var route in new[]{path,path+"/validar"})
+        {
+            var op=swagger.RootElement.GetProperty("paths").GetProperty(route).GetProperty("post");
+            Check(op.GetProperty("requestBody").GetProperty("content").TryGetProperty("multipart/form-data",out _),"Swagger carga multipart "+route);
+        }
+        await app.StopAsync();
+    }
+}

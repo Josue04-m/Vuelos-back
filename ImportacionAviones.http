@@ -1,0 +1,53 @@
+@baseUrl = http://localhost:5236
+@tokenAdmin = TOKEN_ADMIN
+@primeraClaseId = 1
+@segundaClaseId = 2
+@terceraClaseId = 3
+
+### Vista previa sin escrituras. Sustituir IDs por categorías reales activas.
+POST {{baseUrl}}/api/admin/aviones/importacion/validar
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: multipart/form-data; boundary=FlotaBoundary
+
+--FlotaBoundary
+Content-Disposition: form-data; name="primeraClaseId"
+
+{{primeraClaseId}}
+--FlotaBoundary
+Content-Disposition: form-data; name="segundaClaseId"
+
+{{segundaClaseId}}
+--FlotaBoundary
+Content-Disposition: form-data; name="terceraClaseId"
+
+{{terceraClaseId}}
+--FlotaBoundary
+Content-Disposition: form-data; name="archivo"; filename="planes.csv"
+Content-Type: text/csv
+
+< ./docs/planes.csv
+--FlotaBoundary--
+
+### Confirmar solo después de revisar vista previa. Esta petición sí escribe.
+POST {{baseUrl}}/api/admin/aviones/importacion
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: multipart/form-data; boundary=FlotaBoundary
+
+--FlotaBoundary
+Content-Disposition: form-data; name="primeraClaseId"
+
+{{primeraClaseId}}
+--FlotaBoundary
+Content-Disposition: form-data; name="segundaClaseId"
+
+{{segundaClaseId}}
+--FlotaBoundary
+Content-Disposition: form-data; name="terceraClaseId"
+
+{{terceraClaseId}}
+--FlotaBoundary
+Content-Disposition: form-data; name="archivo"; filename="planes.csv"
+Content-Type: text/csv
+
+< ./docs/planes.csv
+--FlotaBoundary--

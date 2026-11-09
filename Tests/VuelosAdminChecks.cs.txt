@@ -1,0 +1,616 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Vuelos_Backend.Authentication;
+using Vuelos_Backend.Controllers.Administracion;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Interface.Vuelos;
+using Vuelos_Backend.Middleware;
+using Vuelos_Backend.Models.Aeropuertos;
+using Vuelos_Backend.Models.Asientos;
+using Vuelos_Backend.Models.Asientos.DTOs;
+using Vuelos_Backend.Models.Aviones;
+using Vuelos_Backend.Models.Reservas;
+using Vuelos_Backend.Models.Usuarios;
+using Vuelos_Backend.Models.Vuelos;
+using Vuelos_Backend.Models.Vuelos.DTOs;
+using Vuelos_Backend.Services.Vuelos;
+using Vuelos_Backend.Swagger;
+
+internal static class Checks
+{
+    private static int count;
+    private static readonly DateTimeOffset Salida = new(2090, 1, 1, 10, 0, 0, TimeSpan.Zero);
+    private static void Check(bool ok, string name)
+    {
+        if (!ok) throw new Exception(name);
+        count++;
+    }
+    private static async Task Error(Func<Task> action, ErrorVueloAdmin error, string code)
+    {
+        try { await action(); throw new Exception("Se esperaba error: " + code); }
+        catch (VueloAdminOperacionException e) { Check(e.Error == error && e.Codigo == code, code); }
+    }
+    private static CrearVueloAdminRequest Crear() => new()
+    {
+        NumeroVuelo = "PN 100", AvionId = 1, AeropuertoOrigenId = 1, AeropuertoDestinoId = 2,
+        SalidaProgramada = Salida.ToOffset(TimeSpan.FromHours(-5)), LlegadaProgramada = Salida.AddHours(2),
+        TarifasPorClase = [new() { CategoriaId = 1, Precio = 120.50m }, new() { CategoriaId = 2, Precio = 80m }]
+    };
+    private static EditarVueloAdminRequest Editar(string version) => new()
+    {
+        NumeroVuelo = "PN 101", AeropuertoOrigenId = 2, AeropuertoDestinoId = 1,
+        SalidaProgramada = Salida.AddDays(1), LlegadaProgramada = Salida.AddDays(1).AddHours(2), Version = version
+    };
+
+    public static async Task Main()
+    {
+        var ct = CancellationToken.None;
+        var repo = new MemoryRepo();
+        var service = new VueloAdminService(repo, TimeProvider.System);
+        var creado = await service.CrearAsync(Crear(), 17, ct);
+        Check(creado.Vuelo.Estado == "programado" && creado.CantidadAsientos == 2, "creación completa");
+        Check(repo.Asientos.All(a => a.Estado == "disponible") && repo.Asientos.Sum(a => a.Precio) == 200.50m, "precios USD explícitos");
+        Check(repo.Historial?.UsuarioAdminId == 17 && repo.Historial.EstadoAnterior is null, "historial inicial y actor");
+        Check(repo.Current!.SalidaProgramada == Salida.UtcDateTime && repo.Current.SalidaProgramada.Kind == DateTimeKind.Utc, "UTC");
+        Check(repo.Commits == 1 && repo.Disposed == 1, "transacción confirmada");
+        var before = repo.Asientos.ToArray();
+        var edited = await service.EditarAsync(1, Editar(creado.Version), ct);
+        Check(edited.Version != creado.Version && edited.Vuelo.NumeroVuelo == "PN 101", "edición y versión nueva");
+        Check(repo.Order.SequenceEqual(new[] { "avion", "vuelo", "reservas" }), "orden de bloqueos");
+        Check(repo.Asientos.SequenceEqual(before) && repo.Current.AvionId == 1, "conserva avión y asientos");
+        await Error(() => service.EditarAsync(1, Editar(creado.Version), ct), ErrorVueloAdmin.Conflicto, "version_desactualizada");
+        Check(repo.Commits == 2, "versión antigua no confirma");
+        repo.Reservas = true;
+        await Error(() => service.EditarAsync(1, Editar(edited.Version), ct), ErrorVueloAdmin.Conflicto, "vuelo_con_reservas");
+        repo.Reservas = false;
+        repo.Current.Estado = "embarcando";
+        var state = await service.ObtenerAsync(1, ct);
+        await Error(() => service.EditarAsync(1, Editar(state.Version), ct), ErrorVueloAdmin.Conflicto, "vuelo_no_editable");
+        repo.Current.Estado = "programado";
+        repo.Overlap = true;
+        state = await service.ObtenerAsync(1, ct);
+        await Error(() => service.EditarAsync(1, Editar(state.Version), ct), ErrorVueloAdmin.Conflicto, "avion_no_disponible");
+        repo.Overlap = false;
+        await Error(() => service.CrearAsync(Crear() with { AeropuertoDestinoId = 1 }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        await Error(() => service.CrearAsync(Crear() with { SalidaProgramada = DateTimeOffset.UtcNow.AddDays(-1) }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        await Error(() => service.CrearAsync(Crear() with { LlegadaProgramada = Salida }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        await Error(() => service.CrearAsync(Crear() with { TarifasPorClase = [new() { CategoriaId = 1, Precio = -1m }] }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        await Error(() => service.CrearAsync(Crear() with { TarifasPorClase = [new() { CategoriaId = 1, Precio = 1.001m }] }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        await Error(() => service.CrearAsync(Crear() with { TarifasPorClase = [new() { CategoriaId = 1, Precio = 1m }, new() { CategoriaId = 1, Precio = 1m }] }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        await Error(() => service.CrearAsync(Crear() with { TarifasPorClase = [new() { CategoriaId = 99, Precio = 1m }] }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        repo.Avion.CapacidadTotal = 3;
+        await Error(() => service.CrearAsync(Crear(), 17, ct), ErrorVueloAdmin.Conflicto, "asientos_avion_incompletos");
+        repo.Avion.CapacidadTotal = 2;
+        repo.Aeropuertos = false;
+        await Error(() => service.CrearAsync(Crear(), 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        repo.Aeropuertos = true;
+        repo.ThrowSave = true;
+        var commits = repo.Commits;
+        await Error(() => service.CrearAsync(Crear(), 17, ct), ErrorVueloAdmin.Conflicto, "save_test");
+        Check(repo.Commits == commits && !repo.InTransaction, "fallo de escritura no confirma y dispone la transacción");
+        repo.ThrowSave = false;
+
+        // Comprobaciones de Cambios de Estado Operativo
+        var actual = await service.ObtenerAsync(1, ct);
+        var estadoEmbarcando = await service.CambiarEstadoAsync(1, new CambiarEstadoVueloAdminRequest
+        {
+            NuevoEstado = "embarcando", Version = actual.Version, Observacion = "Iniciando embarque"
+        }, 17, ct);
+        Check(estadoEmbarcando.Vuelo.Estado == "embarcando" && !repo.Current.SalidaReal.HasValue, "embarque sin salida real");
+        Check(repo.UltimaExpiracionForzada, "iniciar embarque solicita liberar pendientes aunque no venza su reloj");
+        Check(repo.Historial?.EstadoNuevo == "embarcando" && repo.Historial.EstadoAnterior == "programado", "historial registrado");
+
+        await Error(() => service.CambiarEstadoAsync(1, new CambiarEstadoVueloAdminRequest
+        {
+            NuevoEstado = "embarcando", Version = estadoEmbarcando.Version
+        }, 17, ct), ErrorVueloAdmin.Conflicto, "estado_sin_cambio");
+
+        await Error(() => service.CambiarEstadoAsync(1, new CambiarEstadoVueloAdminRequest
+        {
+            NuevoEstado = "finalizado", Version = estadoEmbarcando.Version
+        }, 17, ct), ErrorVueloAdmin.Conflicto, "transicion_invalida");
+
+        var estadoEnVuelo = await service.CambiarEstadoAsync(1, new CambiarEstadoVueloAdminRequest
+        {
+            NuevoEstado = "en vuelo", Version = estadoEmbarcando.Version, SalidaReal = DateTimeOffset.UtcNow.AddMinutes(-5)
+        }, 17, ct);
+        Check(estadoEnVuelo.Vuelo.Estado == "en vuelo", "cambio a en vuelo");
+
+        var estadoFinalizado = await service.CambiarEstadoAsync(1, new CambiarEstadoVueloAdminRequest
+        {
+            NuevoEstado = "finalizado", Version = estadoEnVuelo.Version
+        }, 17, ct);
+        Check(estadoFinalizado.Vuelo.Estado == "finalizado" && repo.Current.LlegadaReal.HasValue, "cambio a finalizado");
+
+        await Error(() => service.CambiarEstadoAsync(1, new CambiarEstadoVueloAdminRequest
+        {
+            NuevoEstado = "programado", Version = estadoFinalizado.Version
+        }, 17, ct), ErrorVueloAdmin.Conflicto, "transicion_invalida");
+
+        // Cancelación de vuelo con liberación de reservas
+        repo.Current.Estado = "programado";
+        var estadoProgramado = await service.ObtenerAsync(1, ct);
+        var resDummy = new Reserva { ReservaId = 1, CodigoReserva = "PNRES1", VueloId = 1, Estado = "confirmada", RowVersion = new byte[8] };
+        var detDummy = new DetalleReserva { DetalleId = 1, ReservaId = 1, Estado = "activo", AsientoVuelo = repo.Asientos[0], AsientoVueloId = repo.Asientos[0].AsientoVueloId };
+        repo.ListaReservas = [resDummy];
+        repo.ListaDetalles = [detDummy];
+        repo.Asientos[0].Estado = "reservado";
+        repo.CancelacionEjecutada = false;
+
+        var cancelado = await service.CambiarEstadoAsync(1, new CambiarEstadoVueloAdminRequest
+        {
+            NuevoEstado = "cancelado", Version = estadoProgramado.Version, Observacion = "Cancelación climática"
+        }, 17, ct);
+        Check(cancelado.Vuelo.Estado == "cancelado" && repo.CancelacionEjecutada, "cancelación transaccional ejecutada");
+        Check(resDummy.Estado == "cancelada" && detDummy.Estado == "liberado" && repo.Asientos[0].Estado == "disponible", "reservas y asientos liberados");
+
+        // Consulta de Historial
+        var historiales = await service.ObtenerHistorialAsync(1, ct);
+        Check(historiales.Count > 0, "consulta de historial admin");
+
+        // Gestión de Asientos
+        repo.Current.Estado = "programado";
+        var asientosListados = await service.ListarAsientosAsync(1, ct);
+        Check(asientosListados.Count == 2, "listar asientos admin");
+
+        var asientoParaActualizar = repo.Asientos[0];
+        asientoParaActualizar.RowVersion = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+        var rowVersionBase64 = Convert.ToBase64String(asientoParaActualizar.RowVersion);
+
+        var asientoActualizado = await service.ActualizarAsientoAsync(1, asientoParaActualizar.AsientoVueloId, new ActualizarAsientoVueloAdminRequest
+        {
+            Precio = 150m, Estado = "bloqueado", RowVersion = rowVersionBase64
+        }, ct);
+        Check(asientoActualizado.Precio == 150m && asientoActualizado.Estado == "bloqueado", "actualización de precio y bloqueo");
+
+        // Concurrencia de asiento con versión antigua
+        await Error(() => service.ActualizarAsientoAsync(1, asientoParaActualizar.AsientoVueloId, new ActualizarAsientoVueloAdminRequest
+        {
+            Precio = 160m, RowVersion = Convert.ToBase64String(new byte[] { 8, 7, 6, 5, 4, 3, 2, 1 })
+        }, ct), ErrorVueloAdmin.Conflicto, "version_desactualizada");
+
+        // No permitir alterar disponibilidad con reserva activa
+        repo.AsientosConReserva.Add(asientoParaActualizar.AsientoVueloId);
+        await Error(() => service.ActualizarAsientoAsync(1, asientoParaActualizar.AsientoVueloId, new ActualizarAsientoVueloAdminRequest
+        {
+            Estado = "disponible", RowVersion = rowVersionBase64
+        }, ct), ErrorVueloAdmin.Conflicto, "asiento_con_reserva");
+        repo.AsientosConReserva.Clear();
+
+        // Consulta de reservas de un vuelo
+        var reservasVuelo = await service.ListarReservasAsync(1, ct);
+        Check(reservasVuelo.Count == 1 && reservasVuelo[0].CodigoReserva == "PNRES1", "consulta reservas del vuelo");
+
+        await using (var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options))
+        {
+            Check(!context.Database.HasPendingModelChanges(), "sin cambios de esquema/migración");
+            Check(context.Database.GetDbConnection().State == System.Data.ConnectionState.Closed, "sin conexión SQL");
+        }
+        await RegressionChecks();
+        await ClassPricingAndAircraftChecks();
+        await HttpChecks();
+        await CatalogosChecks.RunAsync();
+        await CorsChecks.RunAsync();
+        await ImportacionAvionesChecks.RunAsync();
+        await ImportacionAeropuertosChecks.RunAsync();
+        await ReservasTemporalesChecks.RunAsync();
+        await VentasChecks.RunAsync();
+        await SwaggerFlujoChecks.RunAsync();
+        await PayPalChecks.RunAsync();
+        await DescuentosPasajerosChecks.RunAsync();
+        await IvaReservasChecks.RunAsync();
+        Console.WriteLine($"OK: {count} comprobaciones de vuelos administrativos; sin SQL Server.");
+    }
+
+    private static async Task ClassPricingAndAircraftChecks()
+    {
+        var ct = CancellationToken.None;
+        var repo = new MemoryRepo();
+        var service = new VueloAdminService(repo, TimeProvider.System);
+        var created = await service.CrearAsync(Crear(), 17, ct);
+        await Error(() => service.CrearAsync(Crear() with { TarifasPorClase = [new() { CategoriaId = 1, Precio = 50m }] }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        Check(repo.Asientos.All(a => a.Precio == (a.AsientoFisicoId == 10 ? 120.50m : 80m)), "creación aplica tarifa según categoría");
+        var change = new CambiarAvionVueloRequest { AvionId = 2, Version = created.Version,
+            TarifasPorClase = [new() { CategoriaId = 1, Precio = 200m }, new() { CategoriaId = 2, Precio = 100m }] };
+        repo.Reservas = true;
+        await Error(() => service.CambiarAvionAsync(1, change, 17, ct), ErrorVueloAdmin.Conflicto, "vuelo_con_reservas");
+        repo.Reservas = false;
+        repo.ListaReservas.Add(new Reserva { ReservaId = 1, VueloId = 1, Estado = "cancelada" });
+        await Error(() => service.CambiarAvionAsync(1, change, 17, ct), ErrorVueloAdmin.Conflicto, "vuelo_con_reservas");
+        repo.ListaReservas.Clear();
+        repo.Overlap = true;
+        await Error(() => service.CambiarAvionAsync(1, change, 17, ct), ErrorVueloAdmin.Conflicto, "avion_no_disponible");
+        repo.Overlap = false;
+        var switched = await service.CambiarAvionAsync(1, change, 17, ct);
+        Check(switched.Vuelo.Avion.AvionId == 2 && switched.CantidadAsientos == 3 && switched.Version != created.Version, "cambio de avión con diferente capacidad");
+        Check(repo.Asientos.Count == 5 && repo.Asientos.Where(a => a.AsientoFisico.AvionId == 1).All(a => a.Estado == "bloqueado"), "conserva filas anteriores bloqueadas");
+        Check(repo.Asientos.Where(a => a.AsientoFisicoId is 21 or 22).All(a => a.Precio == 100m), "misma clase recibe mismo precio");
+        Check(repo.Historial!.UsuarioAdminId == 17 && repo.Historial.Observacion!.Contains("1 → 2"), "auditoría de cambio");
+        await Error(() => service.CambiarAvionAsync(1, change with { AvionId = 1 }, 17, ct), ErrorVueloAdmin.Conflicto, "version_desactualizada");
+        var back = await service.CambiarAvionAsync(1, change with { AvionId = 1, Version = switched.Version }, 17, ct);
+        Check(back.CantidadAsientos == 2 && repo.Asientos.Count == 5, "regresar al avión original reutiliza claves sin duplicados ni borrados");
+        repo.Current!.Estado = "embarcando";
+        var boarding = await service.ObtenerAsync(1, ct);
+        await Error(() => service.CambiarAvionAsync(1, change with { Version = boarding.Version }, 17, ct), ErrorVueloAdmin.Conflicto, "vuelo_no_editable");
+    }
+
+    private static async Task RegressionChecks()
+    {
+        var ct = CancellationToken.None;
+        var repo = new MemoryRepo();
+        var service = new VueloAdminService(repo, TimeProvider.System);
+        var created = await service.CrearAsync(Crear(), 17, ct);
+        repo.Avion.Activo = false;
+        await Error(() => service.CrearAsync(Crear(), 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        repo.Avion.Activo = true;
+        await Error(() => service.CambiarEstadoAsync(1, new() {
+            NuevoEstado = "embarcando", Version = created.Version, SalidaReal = DateTimeOffset.UtcNow
+        }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        Check(repo.Current!.SalidaReal is null && repo.Current.Estado == "programado", "fecha improcedente no altera vuelo");
+        var boarding = await service.CambiarEstadoAsync(1, new() { NuevoEstado = "embarcando", Version = created.Version }, 17, ct);
+        Check(!boarding.Vuelo.PermiteReservas && boarding.Vuelo.SalidaReal is null, "embarque cierra reservas sin inventar salida");
+        await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "retrasado", Version = boarding.Version }, 17, ct), ErrorVueloAdmin.Conflicto, "transicion_invalida");
+        await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "programado", Version = boarding.Version }, 17, ct), ErrorVueloAdmin.Conflicto, "transicion_invalida");
+        await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "en vuelo", Version = boarding.Version, SalidaReal = DateTimeOffset.UtcNow.AddDays(1) }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "en vuelo", Version = boarding.Version, LlegadaReal = DateTimeOffset.UtcNow }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        var departure = DateTimeOffset.UtcNow.AddMinutes(-10).ToOffset(TimeSpan.FromHours(-5));
+        var flying = await service.CambiarEstadoAsync(1, new() { NuevoEstado = "en vuelo", Version = boarding.Version, SalidaReal = departure }, 17, ct);
+        Check(flying.Vuelo.SalidaReal == departure.ToUniversalTime(), "salida explícita normalizada a UTC");
+        await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "finalizado", Version = flying.Version, LlegadaReal = DateTimeOffset.UtcNow.AddDays(1) }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "finalizado", Version = flying.Version, LlegadaReal = departure }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "finalizado", Version = flying.Version, LlegadaReal = departure.AddMinutes(-1) }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
+        var finished = await service.CambiarEstadoAsync(1, new() { NuevoEstado = "finalizado", Version = flying.Version }, 17, ct);
+        Check(finished.Vuelo.LlegadaReal > finished.Vuelo.SalidaReal, "finalización con hora actual válida");
+
+        repo.Current.Estado = "retrasado";
+        var legacy = await service.ObtenerAsync(1, ct);
+        Check(!legacy.Vuelo.PermiteReservas, "datos antiguos con salida real no reabren reservas");
+        repo.Current.Estado = "embarcando";
+        legacy = await service.ObtenerAsync(1, ct);
+        var previousDeparture = repo.Current.SalidaReal;
+        await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "en vuelo", Version = legacy.Version }, 17, ct), ErrorVueloAdmin.Conflicto, "horarios_requieren_revision");
+        Check(repo.Current.SalidaReal == previousDeparture, "no sobrescribe horas históricas");
+        repo.Current.Estado = "en vuelo"; repo.Current.SalidaReal = null; repo.Current.LlegadaReal = null;
+        legacy = await service.ObtenerAsync(1, ct);
+        await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "finalizado", Version = legacy.Version }, 17, ct), ErrorVueloAdmin.Conflicto, "horarios_requieren_revision");
+
+        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        var repository = new Vuelos_Backend.Repositories.Vuelos.VueloAdminRepository(context);
+        var method = repository.GetType().GetMethod("ConsultaHistorial", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var query = (IQueryable<HistorialEstadoVuelo>)method.Invoke(repository, new object[] { 1 })!;
+        var sql = query.ToQueryString();
+        Check(!sql.Contains("WHERE [u].[eliminado]"), "SQL historial no filtra al actor eliminado");
+        Check(sql.Contains("[usuario_admin_id]") && sql.Contains("[vuelo_id] ="), "historial conserva actor y filtro de vuelo");
+        repo.Historiales.Add(new HistorialEstadoVuelo { VueloId = 1, UsuarioAdminId = 99, EstadoNuevo = "embarcando", FechaCambio = DateTime.UtcNow,
+            UsuarioAdmin = new Usuario { UsuarioId = 99, Nombre = "Admin", Apellido = "Anterior", Eliminado = true } });
+        var history = await service.ObtenerHistorialAsync(1, ct);
+        Check(history.Any(h => h.UsuarioAdminId == 99), "mapeo conserva evento de actor eliminado");
+        var reservaRepo = System.Reflection.DispatchProxy.Create<Vuelos_Backend.Interface.Reservas.IReservaRepository, ReservaGuardProxy>();
+        ((ReservaGuardProxy)(object)reservaRepo).Vuelo = repo.Current;
+        repo.Current.Estado = "retrasado"; repo.Current.SalidaReal = DateTime.UtcNow.AddMinutes(-10);
+        var reservas = new Vuelos_Backend.Services.Reservas.ReservaService(reservaRepo, null!, TimeProvider.System,
+            null!, null!, new ExpiracionNoop());
+        try
+        {
+            await reservas.CrearAsync(17, new Vuelos_Backend.Models.Reservas.DTOs.CrearReservaRequest {
+                VueloId = 1, TotalEsperado = 1m, Pasajeros = [new() {
+                    Cedula = "1234567890", PrimerNombre = "Prueba", PrimerApellido = "Prueba", TipoPasajero = "adulto",
+                    AsientoVueloId = 1, RowVersionAsiento = Convert.ToBase64String(new byte[8])
+                }]
+            }, ct);
+            throw new Exception("No debe reservar vuelos con salida real");
+        }
+        catch (ReservaOperacionException ex) { Check(ex.Codigo == "vuelo_no_reservable", "reserva real rechazada antes de consultar precios o asientos"); }
+    }
+
+    private static async Task HttpChecks()
+    {
+        var repo = new MemoryRepo();
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        builder.Services.AddSingleton<IVueloAdminRepository>(repo);
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddScoped<IVueloAdminService, VueloAdminService>();
+        builder.Services.AddSingleton<IVueloService, Consultas>();
+        builder.Services.AddControllers().AddApplicationPart(typeof(VuelosAdminController).Assembly);
+        builder.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, RoleAuth>("test", _ => { });
+        builder.Services.AddAuthorization(PoliticasAcceso.Configurar);
+        builder.Services.AddProblemDetails();
+        builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(o => { o.SwaggerDoc("v1", new() { Title = "Checks", Version = "v1" }); o.OperationFilter<SeguridadOperationFilter>(); });
+        await using var app = builder.Build();
+        app.UseExceptionHandler(); app.UseSwagger(); app.UseAuthentication(); app.UseAuthorization(); app.MapControllers();
+        await app.StartAsync();
+        var url = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var http = new HttpClient { BaseAddress = new Uri(url) };
+
+        var endpointsAdmin = new[]
+        {
+            (HttpMethod.Get, ""),
+            (HttpMethod.Get, "/1"),
+            (HttpMethod.Post, ""),
+            (HttpMethod.Put, "/1"),
+            (HttpMethod.Patch, "/1/avion"),
+            (HttpMethod.Post, "/1/estado"),
+            (HttpMethod.Get, "/1/historial"),
+            (HttpMethod.Get, "/1/asientos"),
+            (HttpMethod.Patch, "/1/asientos/1"),
+            (HttpMethod.Get, "/1/reservas")
+        };
+
+        foreach (var role in new[] { "", "cliente" })
+        {
+            http.DefaultRequestHeaders.Remove("Authorization");
+            if (role != "") http.DefaultRequestHeaders.Add("Authorization", "Bearer " + role);
+            foreach (var item in endpointsAdmin)
+            {
+                using var request = new HttpRequestMessage(item.Item1, "/api/admin/vuelos" + item.Item2) { Content = JsonContent.Create(Crear()) };
+                using var response = await http.SendAsync(request);
+                Check(response.StatusCode == (role == "" ? HttpStatusCode.Unauthorized : HttpStatusCode.Forbidden), "acceso " + role + item);
+            }
+        }
+        Check(repo.Commits == 0, "rechazos sin escritura");
+        http.DefaultRequestHeaders.Remove("Authorization"); http.DefaultRequestHeaders.Add("Authorization", "Bearer admin");
+        using var created = await http.PostAsJsonAsync("/api/admin/vuelos", Crear());
+        Check(created.StatusCode == HttpStatusCode.Created && created.Headers.Location?.ToString().EndsWith("/api/admin/vuelos/1") == true, "POST 201 Location");
+        Check(repo.Historial!.UsuarioAdminId == 17, "identidad de sesión");
+        var result = (await created.Content.ReadFromJsonAsync<VueloAdminResponse>())!;
+        Check((await http.GetAsync("/api/admin/vuelos")).StatusCode == HttpStatusCode.OK, "listado admin");
+        Check((await http.GetAsync("/api/admin/vuelos/1")).StatusCode == HttpStatusCode.OK, "detalle admin");
+        Check((await http.GetAsync("/api/admin/vuelos/999")).StatusCode == HttpStatusCode.NotFound, "404");
+        Check((await http.PutAsJsonAsync("/api/admin/vuelos/1", Editar(result.Version))).StatusCode == HttpStatusCode.OK, "PUT 200");
+        Check((await http.PutAsJsonAsync("/api/admin/vuelos/1", Editar(result.Version))).StatusCode == HttpStatusCode.Conflict, "PUT versión anterior 409");
+
+        // HTTP checks de nuevos endpoints con rol admin
+        Check((await http.GetAsync("/api/admin/vuelos/1/historial")).StatusCode == HttpStatusCode.OK, "GET historial 200");
+        Check((await http.GetAsync("/api/admin/vuelos/1/asientos")).StatusCode == HttpStatusCode.OK, "GET asientos 200");
+        Check((await http.GetAsync("/api/admin/vuelos/1/reservas")).StatusCode == HttpStatusCode.OK, "GET reservas 200");
+
+        var beforeChange = (await http.GetFromJsonAsync<VueloAdminResponse>("/api/admin/vuelos/1"))!;
+        using var changedHttp = await http.PatchAsJsonAsync("/api/admin/vuelos/1/avion", new CambiarAvionVueloRequest {
+            AvionId = 2, Version = beforeChange.Version, TarifasPorClase = Crear().TarifasPorClase
+        });
+        Check(changedHttp.StatusCode == HttpStatusCode.OK, "HTTP cambio de avión 200");
+        var changedBody = (await changedHttp.Content.ReadFromJsonAsync<VueloAdminResponse>())!;
+        Check(changedBody.CantidadAsientos == 3 && changedBody.Vuelo.Avion.AvionId == 2, "HTTP capacidad del nuevo avión");
+        repo.ListaReservas.Add(new Reserva { ReservaId = 1, VueloId = 1, Estado = "cancelada" });
+        Check((await http.PatchAsJsonAsync("/api/admin/vuelos/1/avion", new CambiarAvionVueloRequest {
+            AvionId = 1, Version = changedBody.Version, TarifasPorClase = Crear().TarifasPorClase
+        })).StatusCode == HttpStatusCode.Conflict, "HTTP reserva cancelada también impide cambio");
+        repo.ListaReservas.Clear();
+
+        var estadoReq = new CambiarEstadoVueloAdminRequest { NuevoEstado = "embarcando", Version = result.Version };
+        // Actualizar version vigente tras el PUT anterior
+        var detalleActual = (await (await http.GetAsync("/api/admin/vuelos/1")).Content.ReadFromJsonAsync<VueloAdminResponse>())!;
+        using var estadoResp = await http.PostAsJsonAsync("/api/admin/vuelos/1/estado", estadoReq with { Version = detalleActual.Version });
+        Check(estadoResp.StatusCode == HttpStatusCode.OK, "POST estado 200");
+
+        var boardingHttp = (await estadoResp.Content.ReadFromJsonAsync<VueloAdminResponse>())!;
+        Check((await http.PostAsJsonAsync("/api/admin/vuelos/1/estado", new CambiarEstadoVueloAdminRequest {
+            NuevoEstado = "retrasado", Version = boardingHttp.Version
+        })).StatusCode == HttpStatusCode.Conflict, "HTTP 409 impide reabrir reservas tras embarque");
+        Check((await http.PostAsJsonAsync("/api/admin/vuelos/1/estado", new CambiarEstadoVueloAdminRequest {
+            NuevoEstado = "en vuelo", Version = boardingHttp.Version, SalidaReal = DateTimeOffset.UtcNow.AddDays(1)
+        })).StatusCode == HttpStatusCode.BadRequest, "HTTP 400 salida futura");
+        Check((await http.PostAsJsonAsync("/api/admin/vuelos/1/estado", new CambiarEstadoVueloAdminRequest {
+            NuevoEstado = "en vuelo", Version = boardingHttp.Version, LlegadaReal = DateTimeOffset.UtcNow
+        })).StatusCode == HttpStatusCode.BadRequest, "HTTP 400 fecha en estado incorrecto");
+        repo.Current!.SalidaReal = DateTime.UtcNow.AddMinutes(-10);
+        var legacyHttp = (await http.GetFromJsonAsync<VueloAdminResponse>("/api/admin/vuelos/1"))!;
+        Check((await http.PostAsJsonAsync("/api/admin/vuelos/1/estado", new CambiarEstadoVueloAdminRequest {
+            NuevoEstado = "en vuelo", Version = legacyHttp.Version
+        })).StatusCode == HttpStatusCode.Conflict, "HTTP 409 horarios históricos requieren revisión");
+
+        var json = JsonSerializer.Serialize(Crear());
+        using var noZone = new StringContent(json.Replace("2090-01-01T05:00:00-05:00", "2090-01-01T05:00:00"), System.Text.Encoding.UTF8, "application/json");
+        Check((await http.PostAsync("/api/admin/vuelos", noZone)).StatusCode == HttpStatusCode.BadRequest, "fecha sin zona 400");
+        Check((await http.PostAsJsonAsync("/api/admin/vuelos", Crear() with { TarifasPorClase = [new() { CategoriaId = 1, Precio = 1.001m }] })).StatusCode == HttpStatusCode.BadRequest, "precio inválido 400");
+        
+        using var swagger = JsonDocument.Parse(await http.GetStringAsync("/swagger/v1/swagger.json"));
+        var paths = swagger.RootElement.GetProperty("paths");
+        Check(paths.GetProperty("/api/admin/vuelos").TryGetProperty("post", out _), "Swagger POST");
+        Check(paths.GetProperty("/api/admin/vuelos/{id}").TryGetProperty("put", out _), "Swagger PUT");
+        Check(paths.GetProperty("/api/admin/vuelos/{id}/avion").TryGetProperty("patch", out _), "Swagger cambio de avión");
+        Check(paths.GetProperty("/api/admin/vuelos/{id}/estado").TryGetProperty("post", out _), "Swagger POST estado");
+        Check(paths.GetProperty("/api/admin/vuelos/{id}/historial").TryGetProperty("get", out _), "Swagger GET historial");
+        Check(paths.GetProperty("/api/admin/vuelos/{id}/asientos").TryGetProperty("get", out _), "Swagger GET asientos");
+        Check(paths.GetProperty("/api/admin/vuelos/{id}/asientos/{asientoVueloId}").TryGetProperty("patch", out _), "Swagger PATCH asiento");
+        Check(paths.GetProperty("/api/admin/vuelos/{id}/reservas").TryGetProperty("get", out _), "Swagger GET reservas");
+        await app.StopAsync();
+    }
+}
+
+internal sealed class RoleAuth(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
+    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        var text = Request.Headers.Authorization.ToString();
+        if (!text.StartsWith("Bearer ")) return Task.FromResult(AuthenticateResult.NoResult());
+        var identity = new ClaimsIdentity([new Claim(ClaimTypes.Role, text[7..]), new Claim(ClaimTypes.NameIdentifier, "17")], "test");
+        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), "test")));
+    }
+}
+
+public class ReservaGuardProxy : System.Reflection.DispatchProxy
+{
+    public Vuelo Vuelo = null!;
+    protected override object? Invoke(System.Reflection.MethodInfo? method, object?[]? args) => method!.Name switch
+    {
+        "IniciarTransaccionAsync" => Task.FromResult<Vuelos_Backend.Interface.Reservas.ITransaccionReserva>(new Transaction()),
+        "BloquearVueloAsync" => Task.FromResult<Vuelo?>(Vuelo),
+        _ => throw new Exception("La reserva debía rechazarse antes de: " + method.Name)
+    };
+    private sealed class Transaction : Vuelos_Backend.Interface.Reservas.ITransaccionReserva
+    {
+        public Task ConfirmarAsync(CancellationToken ct) => throw new Exception("No debe confirmar");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class Consultas : IVueloService
+{
+    public Task<PaginaVuelosResponse> BuscarAsync(BusquedaVuelosRequest r, CancellationToken ct) => Task.FromResult(new PaginaVuelosResponse([], 1, 20, 0, 0));
+    public Task<VueloResponse?> ObtenerAsync(int id, CancellationToken ct) => Task.FromResult<VueloResponse?>(null);
+    public Task<AsientosVueloResponse?> ListarAsientosAsync(int id, CancellationToken ct) => Task.FromResult<AsientosVueloResponse?>(null);
+}
+
+internal sealed class MemoryRepo : IVueloAdminRepository
+{
+    public Avion Avion = new() { AvionId = 1, Modelo = "Prueba", Matricula = "TEST", CapacidadTotal = 2 };
+    public Vuelo? Current;
+    public Vuelo? LastCommitted;
+    public IReadOnlyList<AsientoVuelo> Asientos = [];
+    public IReadOnlyList<AsientoVuelo> LastCommittedAsientos = [];
+    public HistorialEstadoVuelo? Historial;
+    public List<HistorialEstadoVuelo> Historiales = [];
+    public List<Reserva> ListaReservas = [];
+    public List<DetalleReserva> ListaDetalles = [];
+    public HashSet<int> AsientosConReserva = [];
+    public bool Reservas, Overlap, ThrowSave, InTransaction, CancelacionEjecutada;
+    public bool Aeropuertos = true;
+    public int Commits, Disposed;
+    public List<string> Order = [];
+
+    public Task<ITransaccionVueloAdmin> IniciarTransaccionAsync(CancellationToken ct) { InTransaction = true; Order.Clear(); return Task.FromResult<ITransaccionVueloAdmin>(new Transaction(this)); }
+    public Avion AvionAlternativo = new() { AvionId = 2, Modelo = "Alternativo", Matricula = "TEST2", CapacidadTotal = 3 };
+    public Task<Avion?> BloquearAvionAsync(int id, CancellationToken ct) { Order.Add("avion"); return Task.FromResult<Avion?>(id == 1 ? Avion : id == 2 ? AvionAlternativo : null); }
+    public Task<int?> ObtenerAvionIdAsync(int id, CancellationToken ct) => Task.FromResult<int?>(Current?.VueloId == id ? Current.AvionId : null);
+    public Task<Vuelo?> ObtenerAsync(int id, bool bloquear, CancellationToken ct) { if (bloquear) Order.Add("vuelo"); return Task.FromResult(Current?.VueloId == id ? Current : null); }
+    public Task<bool> ExisteAeropuertoAsync(int id, CancellationToken ct) => Task.FromResult(Aeropuertos && id is 1 or 2);
+    public Task<IReadOnlyList<AsientoFisico>> ObtenerAsientosFisicosAsync(int id, CancellationToken ct) => Task.FromResult<IReadOnlyList<AsientoFisico>>(id == 1
+        ? [new() { AsientoFisicoId = 10, AvionId = 1, CategoriaId = 1 }, new() { AsientoFisicoId = 11, AvionId = 1, CategoriaId = 2 }]
+        : [new() { AsientoFisicoId = 20, AvionId = 2, CategoriaId = 1 }, new() { AsientoFisicoId = 21, AvionId = 2, CategoriaId = 2 }, new() { AsientoFisicoId = 22, AvionId = 2, CategoriaId = 2 }]);
+    public Task<bool> TieneReservasVigentesAsync(int id, CancellationToken ct) { Order.Add("reservas"); return Task.FromResult(Reservas); }
+    public bool UltimaExpiracionForzada;
+    public Task ExpirarPendientesAsync(int id, DateTime ahora, bool forzar, CancellationToken ct) { UltimaExpiracionForzada = forzar; return Task.CompletedTask; }
+    public Task<bool> TieneReservasRegistradasAsync(int id, CancellationToken ct) { Order.Add("reservas"); return Task.FromResult(Reservas || ListaReservas.Count > 0 || ListaDetalles.Count > 0); }
+    public Task<IReadOnlyList<AsientoVuelo>> ObtenerTodosAsientosAsync(int id, CancellationToken ct) => Task.FromResult(Asientos);
+    public void AgregarAsientos(IReadOnlyList<AsientoVuelo> asientos)
+    {
+        var id = Asientos.Select(a => a.AsientoVueloId).DefaultIfEmpty().Max() + 1;
+        foreach (var a in asientos)
+        {
+            a.AsientoVueloId = id++; a.RowVersion = new byte[8]; a.Vuelo = Current!;
+            a.AsientoFisico = new AsientoFisico { AsientoFisicoId = a.AsientoFisicoId, AvionId = a.AsientoFisicoId >= 20 ? 2 : 1,
+                CodigoAsiento = "A" + a.AsientoFisicoId, Categoria = new() { Nombre = "Categoría" } };
+        }
+        Asientos = Asientos.Concat(asientos).ToArray();
+    }
+    public Task<bool> TieneSolapamientoAsync(int avion, int? excluir, DateTime salida, DateTime llegada, CancellationToken ct) => Task.FromResult(Overlap);
+    public Task<int> ContarAsientosAsync(int id, CancellationToken ct) => Task.FromResult(Asientos.Count(a => a.AsientoFisico.AvionId == Current!.AvionId));
+    
+    public void Agregar(Vuelo vuelo, IReadOnlyList<AsientoVuelo> asientos, HistorialEstadoVuelo historial)
+    {
+        Current = vuelo;
+        Asientos = asientos;
+        Historial = historial;
+        Historiales.Add(historial);
+        int id = 1;
+        foreach (var a in asientos)
+        {
+            a.AsientoVueloId = id++;
+            a.VueloId = 1;
+            a.RowVersion = new byte[8];
+            a.AsientoFisico = new AsientoFisico { AsientoFisicoId = a.AsientoFisicoId, AvionId = 1, CodigoAsiento = "A" + a.AsientoFisicoId, Categoria = new() { Nombre = "Económica" } };
+        }
+    }
+
+    public void AgregarHistorial(HistorialEstadoVuelo historial)
+    {
+        Historial = historial;
+        Historiales.Add(historial);
+    }
+
+    public Task CancelarReservasYLiberarAsientosAsync(int vueloId, DateTime ahoraUtc, CancellationToken ct)
+    {
+        CancelacionEjecutada = true;
+        foreach (var r in ListaReservas.Where(r => r.VueloId == vueloId))
+            r.Estado = "cancelada";
+        foreach (var d in ListaDetalles.Where(d => d.AsientoVuelo?.VueloId == vueloId))
+            d.Estado = "liberado";
+        foreach (var a in Asientos.Where(a => a.VueloId == vueloId && a.Estado == "reservado"))
+            a.Estado = "disponible";
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<HistorialEstadoVuelo>> ObtenerHistorialAsync(int vueloId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<HistorialEstadoVuelo>>(Historiales.Where(h => h.VueloId == vueloId).ToList());
+
+    public Task<IReadOnlyList<AsientoVuelo>> ListarAsientosConDetallesAsync(int vueloId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<AsientoVuelo>>(Asientos.Where(a => a.VueloId == vueloId).ToList());
+
+    public Task<HashSet<int>> ObtenerIdsAsientosConReservaActivaAsync(int vueloId, CancellationToken ct) =>
+        Task.FromResult(AsientosConReserva);
+
+    public Task<AsientoVuelo?> ObtenerAsientoVueloAsync(int vueloId, int asientoVueloId, bool bloquear, CancellationToken ct) =>
+        Task.FromResult(Asientos.FirstOrDefault(a => a.VueloId == vueloId && a.AsientoVueloId == asientoVueloId));
+
+    public Task<bool> AsientoTieneReservaActivaAsync(int asientoVueloId, CancellationToken ct) =>
+        Task.FromResult(AsientosConReserva.Contains(asientoVueloId));
+
+    public Task<IReadOnlyList<Reserva>> ObtenerReservasDeVueloAsync(int vueloId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Reserva>>(ListaReservas.Where(r => r.VueloId == vueloId).ToList());
+
+    public Task<IReadOnlyList<DetalleReserva>> ObtenerDetallesDeReservasAsync(IEnumerable<int> reservaIds, CancellationToken ct)
+    {
+        var ids = reservaIds.ToHashSet();
+        return Task.FromResult<IReadOnlyList<DetalleReserva>>(ListaDetalles.Where(d => ids.Contains(d.ReservaId)).ToList());
+    }
+
+    public Task GuardarAsync(CancellationToken ct)
+    {
+        if (ThrowSave) throw new VueloAdminOperacionException(ErrorVueloAdmin.Conflicto, "save_test", "Fallo simulado");
+        if (!InTransaction) throw new Exception("Sin transacción");
+        Current!.VueloId = 1; Current.Avion = Current.AvionId == 1 ? Avion : AvionAlternativo;
+        Current.AeropuertoOrigen = Airport(Current.AeropuertoOrigenId); Current.AeropuertoDestino = Airport(Current.AeropuertoDestinoId);
+        return Task.CompletedTask;
+    }
+
+    private static Aeropuerto Airport(int id) => new() { AeropuertoId = id, CodigoIata = id == 1 ? "GYE" : "UIO", Nombre = "Test", Ciudad = "Test", Pais = "EC" };
+
+    private sealed class Transaction(MemoryRepo owner) : ITransaccionVueloAdmin
+    {
+        private bool confirmed;
+        public Task ConfirmarAsync(CancellationToken ct)
+        {
+            owner.Commits++;
+            owner.LastCommitted = owner.Current;
+            owner.LastCommittedAsientos = owner.Asientos;
+            confirmed = true;
+            return Task.CompletedTask;
+        }
+        public ValueTask DisposeAsync()
+        {
+            owner.InTransaction = false;
+            owner.Disposed++;
+            if (!confirmed)
+            {
+                owner.Current = owner.LastCommitted;
+                owner.Asientos = owner.LastCommittedAsientos;
+            }
+            return ValueTask.CompletedTask;
+        }
+    }
+}

@@ -1,0 +1,228 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Vuelos_Backend.Authentication;
+using Vuelos_Backend.Controllers.Pagos;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Middleware;
+using Microsoft.Extensions.Options;
+using Vuelos_Backend.Interface.Pagos;
+using Vuelos_Backend.Models.Pagos;
+using Vuelos_Backend.Models.Reservas;
+using Vuelos_Backend.Services.Pagos;
+
+internal sealed class PayPalStorePrueba(EstadoReservasPrueba f) : IPagoPayPalRepository
+{
+    public readonly HashSet<string> Eventos = [];
+    public Task<PagoPayPal?> PorReservaAsync(int id, CancellationToken ct) => Task.FromResult(f.Pagos.SingleOrDefault(p => p.ReservaId == id));
+    public Task<PagoPayPal?> PorIdAsync(Guid id, CancellationToken ct) => Task.FromResult(f.Pagos.SingleOrDefault(p => p.PagoId == id));
+    public Task<PagoPayPal?> PorIdentificadorExternoAsync(string orden, string captura, string entorno, CancellationToken ct) =>
+        Task.FromResult(f.Pagos.SingleOrDefault(p => p.Entorno == entorno && (orden != "" && p.OrdenId == orden || captura != "" && p.CapturaId == captura)));
+    public void Agregar(PagoPayPal p) { p.Reserva = f.Reservas.Single(r => r.ReservaId == p.ReservaId); f.Pagos.Add(p); }
+    public void LimpiarSeguimiento() { }
+    public Task<bool> EventoExisteAsync(string id, CancellationToken ct) => Task.FromResult(Eventos.Contains(id));
+    public Task RegistrarEventoAsync(EventoPayPal e, CancellationToken ct) { Eventos.Add(e.EventoId); return Task.CompletedTask; }
+}
+
+internal sealed class ProveedorPayPalPrueba(EstadoReservasPrueba f) : IPayPalClient
+{
+    public int Creaciones, Capturas;
+    public bool Aprobada = true, Completada, Pendiente, FallarCaptura, FirmaValida = true, Disponible = true;
+    public Action? DuranteCaptura;
+    private PagoPayPal? pago;
+    private OrdenPayPal Orden() => new("ORDER123", Completada ? "COMPLETED" : Aprobada ? "APPROVED" : "CREATED",
+        "https://www.sandbox.paypal.com/checkoutnow?token=ORDER123", pago!.PagoId.ToString("N"), pago.Monto, "USD", pago.MerchantId,
+        Completada || Pendiente && Capturas > 0 ? "CAPTURE123" : null, Completada ? "COMPLETED" : Pendiente && Capturas > 0 ? "PENDING" : null,
+        Completada || Pendiente && Capturas > 0 ? pago.Monto : null, Completada || Pendiente && Capturas > 0 ? "USD" : null,
+        Completada ? f.Clock.GetUtcNow().UtcDateTime : null);
+    private void SinTransaccion() { if (f.EnTransaccion) throw new Exception("HTTP dentro de transacción SQL"); if (!Disponible) throw new ReservaOperacionException(ErrorReserva.ServicioNoDisponible,"proveedor_caido","Proveedor no disponible"); }
+    public Task<OrdenPayPal> CrearAsync(PagoPayPal p, CancellationToken ct) { SinTransaccion(); pago = p; Creaciones++; return Task.FromResult(Orden()); }
+    public Task<OrdenPayPal> ConsultarAsync(string id, CancellationToken ct) { SinTransaccion(); return Task.FromResult(Orden()); }
+    public Task<OrdenPayPal> CapturarAsync(PagoPayPal p, CancellationToken ct)
+    {
+        SinTransaccion(); if (!p.BloqueaReserva || !p.CapturaIniciada) throw new Exception("Captura sin protección durable");
+        Capturas++; DuranteCaptura?.Invoke(); if (!Pendiente) Completada = true;
+        if (FallarCaptura) throw new ReservaOperacionException(ErrorReserva.ServicioNoDisponible,"captura_incierta","Respuesta incierta");
+        return Task.FromResult(Orden());
+    }
+    public Task<bool> VerificarEventoAsync(JsonElement e, IHeaderDictionary h, CancellationToken ct) => Task.FromResult(FirmaValida);
+}
+
+internal sealed class PayPalFixture
+{
+    public readonly EstadoReservasPrueba F;
+    public readonly PayPalStorePrueba Store;
+    public readonly ProveedorPayPalPrueba Provider;
+    public readonly PagoPayPalService Service;
+    public static OpcionesPayPal Config() => new() { Habilitado=true, Entorno="Sandbox", ClientId="fake-client", ClientSecret="fake-secret",
+        MerchantId="SELLER123", WebhookId="WEBHOOK123", ReturnUrl="https://frontend.example/pago/retorno", CancelUrl="https://frontend.example/pago/cancelado" };
+    public PayPalFixture(EstadoReservasPrueba? f = null)
+    {
+        F = f ?? new(); Store = new(F); Provider = new(F); Service = new(Store, F.Repository, Provider, Options.Create(Config()), F.Clock);
+    }
+    public async Task<PagoPayPalResponse> Crear()
+    { var r = await F.Service.CrearAsync(1, F.Request(1), CancellationToken.None); return await Service.CrearAsync(1, r.ReservaId, new() {RowVersion=r.RowVersion}, CancellationToken.None); }
+}
+
+internal static class PayPalChecks
+{
+    private static int count;
+    private static readonly CancellationToken Ct = CancellationToken.None;
+    private static void Check(bool ok, string text) { if (!ok) throw new Exception(text); count++; }
+    private static async Task Error(Func<Task> action, string codigo)
+    { try { await action(); throw new Exception("Falta rechazo: " + codigo); } catch(ReservaOperacionException e) { Check(e.Codigo == codigo, codigo); } }
+    public static async Task RunAsync()
+    {
+        var f = new PayPalFixture(); var created = await f.Crear();
+        Check(created.Monto == 100 && created.EsSandbox && created.EstadoReserva == "pendiente_pago", "orden no implica pago");
+        await f.Service.CrearAsync(1,1,new(){RowVersion="AAAAAAAAAAA="},Ct);
+        Check(f.Provider.Creaciones == 1, "orden repetida devuelve registro existente");
+        await Error(() => f.Service.ConsultarAsync(2,1,Ct),"pago_no_encontrado");
+        await Error(() => f.Service.CapturarAsync(2,1,Ct),"pago_no_encontrado");
+        await Error(() => f.F.Service.CambiarAsientosAsync(1,1,new(){RowVersion=created.RowVersionReserva,TotalEsperado=100,
+            Cambios=[new(){DetalleId=1,AsientoVueloId=2,RowVersionAsiento=f.F.VersionAsiento(2)}]},Ct),"pago_en_curso");
+        var results = await Task.WhenAll(f.Service.CapturarAsync(1,1,Ct),f.Service.CapturarAsync(1,1,Ct));
+        Check(results.All(r => r.Estado == "completado" && r.EstadoReserva == "pagada") && f.Provider.Capturas == 1, "captura idempotente concurrente");
+        Check(f.F.Historial.Count(h=>h.TipoAccion=="PAGO_PAYPAL") == 1 && f.F.Compras.Count == 0, "historial único, sin compra simulada nueva");
+        f.F.Clock.Advance(TimeSpan.FromHours(13)); await f.F.Expiry.ExpirarLoteAsync(null,Ct);
+        Check(f.F.Reservas[0].Estado == "pagada" && f.F.Asientos[0].Estado=="reservado", "asiento pagado no expira");
+
+        var crossing = new PayPalFixture(); await crossing.Crear();
+        crossing.Provider.DuranteCaptura=()=> {
+            crossing.F.Clock.Advance(TimeSpan.FromHours(13));
+            crossing.F.Expiry.ExpirarLoteAsync(null,Ct).GetAwaiter().GetResult();
+            Check(crossing.F.Asientos[0].Estado=="reservado", "expiración concurrente no libera durante HTTP de captura");
+        };
+        Check((await crossing.Service.CapturarAsync(1,1,Ct)).EstadoReserva=="pagada", "captura iniciada vigente finaliza después del plazo sin perder asiento");
+
+        var pending = new PayPalFixture(); await pending.Crear(); pending.Provider.Pendiente=true;
+        var wait = await pending.Service.CapturarAsync(1,1,Ct);
+        Check(wait.Estado=="pendiente" && wait.EstadoReserva=="pendiente_pago" && pending.F.Pagos[0].BloqueaReserva, "PENDING no acredita ni libera");
+        pending.F.Clock.Advance(TimeSpan.FromHours(13)); await pending.F.Expiry.ExpirarLoteAsync(null,Ct);
+        Check(pending.F.Reservas[0].Estado=="pendiente_pago" && pending.F.Asientos[0].Estado=="reservado", "reserva protegida durante pago pendiente");
+        await Error(()=>pending.F.Service.CancelarAsync(1,1,new(){RowVersion=wait.RowVersionReserva},Ct),"pago_en_curso");
+        pending.Provider.Completada=true; await pending.Service.ConciliarAsync(wait.PagoId,Ct);
+        Check(pending.F.Reservas[0].Estado=="pagada" && pending.Provider.Capturas==1, "conciliación confirma captura tardía protegida sin cobrar otra vez");
+
+        var uncertain = new PayPalFixture(); await uncertain.Crear(); uncertain.Provider.FallarCaptura=true;
+        await Error(()=>uncertain.Service.CapturarAsync(1,1,Ct),"captura_incierta");
+        Check(uncertain.F.Pagos[0].BloqueaReserva && uncertain.F.Reservas[0].Estado=="pendiente_pago", "timeout mantiene protección durable");
+        var recovered = await uncertain.Service.ConsultarAsync(1,1,Ct);
+        Check(recovered.Estado=="completado" && uncertain.Provider.Capturas==1, "GET recupera timeout sin repetir cobro");
+
+        var cancelled = new PayPalFixture(); var cancelOrder=await cancelled.Crear();
+        await cancelled.F.Service.CancelarAsync(1,1,new(){RowVersion=cancelOrder.RowVersionReserva},Ct);
+        await Error(()=>cancelled.Service.CapturarAsync(1,1,Ct),"reserva_no_comprable");
+        Check(cancelled.Provider.Capturas==0 && cancelled.F.Asientos[0].Estado=="disponible", "cancelación previa a cobro libera asiento");
+        // Un cobro confirmado fuera de la API no debe resucitar una reserva ya liberada.
+        cancelled.Provider.Completada=true;
+        await cancelled.Service.ConciliarAsync(cancelOrder.PagoId,Ct);
+        Check(cancelled.F.Reservas[0].Estado=="cancelada" && cancelled.F.Pagos[0].Estado=="revision" && cancelled.F.Pagos[0].FechaCaptura!=null,
+            "captura tardía se registra para revisión sin reasignar asiento");
+
+        var unapproved = new PayPalFixture(); await unapproved.Crear(); unapproved.Provider.Aprobada=false;
+        var unapprovedResult=await unapproved.Service.CapturarAsync(1,1,Ct);
+        Check(unapprovedResult.Estado=="creada" && unapproved.Provider.Capturas==0 && !unapproved.F.Pagos[0].BloqueaReserva,"CREATED no cobra ni bloquea indefinidamente");
+
+        using var evt=JsonDocument.Parse("""{"id":"EVENT1","event_type":"PAYMENT.CAPTURE.COMPLETED","resource":{"supplementary_data":{"related_ids":{"order_id":"ORDER123"}}}}""");
+        f.Provider.FirmaValida=false; await Error(()=>f.Service.ProcesarEventoAsync(evt.RootElement,new HeaderDictionary(),Ct),"webhook_no_verificado");
+        Check(f.Store.Eventos.Count==0,"evento inválido no se registra"); f.Provider.FirmaValida=true;
+        await f.Service.ProcesarEventoAsync(evt.RootElement,new HeaderDictionary(),Ct); await f.Service.ProcesarEventoAsync(evt.RootElement,new HeaderDictionary(),Ct);
+        Check(f.Store.Eventos.Count==1 && f.F.Historial.Count(h=>h.TipoAccion=="PAGO_PAYPAL")==1,"webhook duplicado idempotente");
+        using var refund=JsonDocument.Parse("""{"id":"EVENT2","event_type":"PAYMENT.CAPTURE.REFUNDED","resource":{"supplementary_data":{"related_ids":{"order_id":"ORDER123"}}}}""");
+        await f.Service.ProcesarEventoAsync(refund.RootElement,new HeaderDictionary(),Ct);
+        Check(f.F.Pagos[0].Estado=="revision" && f.F.Pagos[0].FechaCaptura!=null,"reembolso avisa revisión y conserva bruto histórico");
+        await f.Service.ConciliarAsync(created.PagoId,Ct);
+        Check(f.F.Pagos[0].Estado=="revision","consulta posterior no borra revisión de reembolso");
+        await ClienteHttpChecks();
+        await ApiHttpChecks();
+        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        var migrations=db.GetService<IMigrationsAssembly>(); var info=migrations.Migrations.Single(m=>m.Key.EndsWith("_PagosPayPal"));
+        var migration=migrations.CreateMigration(info.Value,db.Database.ProviderName!);
+        Check(migration.UpOperations.OfType<CreateTableOperation>().Count()==2 && !migration.UpOperations.Any(o=>o is DropTableOperation or AlterColumnOperation or UpdateDataOperation or DeleteDataOperation),"migración aditiva conserva historial");
+        Check(migration.UpOperations.OfType<CreateIndexOperation>().Count(i=>i.IsUnique)==3,"reserva, orden y captura únicas en SQL");
+        Console.WriteLine($"OK: {count} comprobaciones PayPal con proveedor simulado; sin cobros ni SQL Server.");
+    }
+
+    private static async Task ApiHttpChecks()
+    {
+        var f=new PayPalFixture(); await f.Crear(); f.F.Reservas[0].UsuarioId=17;
+        var builder=WebApplication.CreateBuilder(); builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddSingleton(f.Service);
+        builder.Services.AddControllers().AddApplicationPart(typeof(PayPalController).Assembly);
+        builder.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions,RoleAuth>("test",_=>{});
+        builder.Services.AddAuthorization(PoliticasAcceso.Configurar);
+        builder.Services.AddProblemDetails(); builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+        await using var app=builder.Build(); app.UseExceptionHandler(); app.UseAuthentication(); app.UseAuthorization(); app.MapControllers(); await app.StartAsync();
+        using var http=new HttpClient {BaseAddress=new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
+        Check((await http.PostAsJsonAsync("/api/reservas/1/paypal/orden",new {rowVersion="AAAAAAAAAAA="})).StatusCode==HttpStatusCode.Unauthorized,"orden exige sesión HTTP");
+        Check((await http.PostAsync("/api/reservas/1/paypal/captura",null)).StatusCode==HttpStatusCode.Unauthorized,"captura exige sesión HTTP");
+        Check((await http.GetAsync("/api/reservas/1/paypal")).StatusCode==HttpStatusCode.Unauthorized,"estado exige sesión HTTP");
+        http.DefaultRequestHeaders.Add("Authorization","Bearer cliente");
+        Check((await http.PostAsync("/api/admin/pagos/paypal/"+f.F.Pagos[0].PagoId+"/conciliacion",null)).StatusCode==HttpStatusCode.Forbidden,"cliente no concilia pagos globales");
+        Check((await http.PostAsJsonAsync("/api/reservas/1/paypal/orden",new {})).StatusCode==HttpStatusCode.BadRequest,"orden exige RowVersion");
+        Check((await http.PostAsync("/api/reservas/1/paypal/captura",null)).StatusCode==HttpStatusCode.OK,"captura HTTP propietario");
+        f.F.Reservas[0].UsuarioId=18;
+        Check((await http.GetAsync("/api/reservas/1/paypal")).StatusCode==HttpStatusCode.NotFound,"pago ajeno HTTP 404");
+        http.DefaultRequestHeaders.Remove("Authorization"); f.Provider.FirmaValida=false;
+        Check((await http.PostAsJsonAsync("/api/pagos/paypal/webhook",new {id="EVT",event_type="PAYMENT.CAPTURE.COMPLETED"})).StatusCode==HttpStatusCode.BadRequest,"webhook sin sesión exige firma y rechaza inválida");
+        await app.StopAsync();
+    }
+
+    private static async Task ClienteHttpChecks()
+    {
+        var config=PayPalFixture.Config(); var handler=new HttpPayPalPrueba();
+        using var http=new HttpClient(handler); var client=new PayPalClient(http,Options.Create(config));
+        var p=new PagoPayPal {PagoId=Guid.NewGuid(),Monto=80.25m,MerchantId=config.MerchantId,OrdenId="ORDER123"}; handler.Pago=p;
+        var order=await client.CrearAsync(p,Ct); PagoPayPalService.ValidarOrden(p,order,true);
+        await client.CrearAsync(p,Ct); await client.CapturarAsync(p,Ct);
+        Check(handler.CreateIds.Distinct().Count()==1 && handler.CaptureIds.Single()!=handler.CreateIds[0],"request IDs estables y diferentes por operación");
+        Check(handler.CreateBody!.Contains("80.25") && handler.CreateBody.Contains("USD") && handler.CreateBody.Contains(p.PagoId.ToString("N")),"contrato JSON importe USD y referencia del servidor");
+        Check(handler.Hosts.All(h=>h=="api-m.sandbox.paypal.com"),"Sandbox usa exclusivamente host oficial");
+        await Error(()=>Task.Run(()=>PagoPayPalService.ValidarOrden(p,order with {Monto=0.01m},true)),"pago_inconsistente");
+        await Error(()=>Task.Run(()=>PagoPayPalService.ValidarOrden(p,order with {MerchantId="OTHER"},true)),"pago_inconsistente");
+        await Error(()=>Task.Run(()=>PagoPayPalService.ValidarOrden(p,order with {CustomId="OTHER"},true)),"pago_inconsistente");
+        await Error(()=>Task.Run(()=>PagoPayPalService.ValidarOrden(p,order with {CapturaId="CAP",MontoCaptura=1,MonedaCaptura="USD"},true)),"pago_inconsistente");
+        handler.Fallar=true; await Error(()=>client.ConsultarAsync("ORDER123",Ct),"paypal_no_disponible");
+        config.Habilitado=false; await Error(()=>client.CrearAsync(p,Ct),"paypal_sin_configurar");
+    }
+}
+
+internal sealed class HttpPayPalPrueba : HttpMessageHandler
+{
+    public PagoPayPal Pago=null!;
+    public readonly List<string> CreateIds=[],CaptureIds=[],Hosts=[];
+    public string? CreateBody;
+    public bool Fallar;
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req,CancellationToken ct)
+    {
+        Hosts.Add(req.RequestUri!.Host);
+        if(Fallar) return new(HttpStatusCode.ServiceUnavailable){Content=new StringContent("provider private error must not leak")};
+        var path=req.RequestUri.AbsolutePath;
+        if(path.EndsWith("/token")) return Json("""{"access_token":"fake-access-token"}""");
+        if(path=="/v2/checkout/orders") {CreateIds.Add(req.Headers.GetValues("PayPal-Request-Id").Single());CreateBody=await req.Content!.ReadAsStringAsync(ct);}
+        if(path.EndsWith("/capture")) CaptureIds.Add(req.Headers.GetValues("PayPal-Request-Id").Single());
+        return Json(JsonSerializer.Serialize(new {id="ORDER123",status="APPROVED",purchase_units=new[]{new {custom_id=Pago.PagoId.ToString("N"),
+            amount=new {value=Pago.Monto.ToString("0.00",System.Globalization.CultureInfo.InvariantCulture),currency_code="USD"},payee=new {merchant_id=Pago.MerchantId}}}}));
+    }
+    private static HttpResponseMessage Json(string json)=>new(HttpStatusCode.OK){Content=new StringContent(json,Encoding.UTF8,"application/json")};
+}

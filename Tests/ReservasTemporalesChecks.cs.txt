@@ -1,0 +1,286 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Vuelos_Backend.Authentication;
+using Vuelos_Backend.Controllers.Reservas;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Interface.Reservas;
+using Vuelos_Backend.Middleware;
+using Vuelos_Backend.Models.Asientos;
+using Vuelos_Backend.Models.Reservas;
+using Vuelos_Backend.Models.Reservas.DTOs;
+using Vuelos_Backend.Models.Vuelos;
+using Vuelos_Backend.Services.Reservas;
+
+internal sealed class ExpiracionNoop : IExpiracionReservasService
+{
+    public Task ExpirarVueloAsync(int id, CancellationToken ct) => Task.CompletedTask;
+    public Task ExpirarLoteAsync(int? id, CancellationToken ct) => Task.CompletedTask;
+}
+
+internal static class ReservasTemporalesChecks
+{
+    private static int count;
+    private static void Check(bool ok, string name) { if (!ok) throw new Exception(name); count++; }
+    private static async Task Error(Func<Task> action, string code)
+    {
+        try { await action(); throw new Exception("Falta rechazo: " + code); }
+        catch (ReservaOperacionException ex) { Check(ex.Codigo == code, "rechazo " + code); }
+    }
+    private static readonly CancellationToken Ct = CancellationToken.None;
+    public static async Task RunAsync()
+    {
+        var f = new EstadoReservasPrueba();
+        var hold = await f.Service.CrearAsync(1, f.Request(1), Ct);
+        Check(hold.Estado == "pendiente_pago" && hold.FechaExpiracion == f.Clock.GetUtcNow().AddHours(12), "retención 12 horas UTC");
+        Check(!hold.AnteriorAlFlujoTemporal && f.Asientos[0].Estado == "reservado", "retención no se anuncia como compra");
+        f.Reservas[0].Estado = "pagada";
+        f.Compras.Add(new CompraSimulada { CompraId = Guid.NewGuid(), ReservaId = hold.ReservaId, UsuarioId = 1, Monto = 100, FechaCompra = f.Clock.GetUtcNow().UtcDateTime });
+        var paid = await f.Service.ObtenerPropiaAsync(1, hold.ReservaId, Ct);
+        Check(paid.Compra is not null && paid.Compra.EsSimulada, "conserva comprobantes históricos simulados");
+        await Error(() => f.Service.CancelarAsync(1, hold.ReservaId, new() { RowVersion = paid.RowVersion }, Ct), "compra_no_modificable");
+        f.Clock.Advance(TimeSpan.FromHours(13)); await f.Expiry.ExpirarLoteAsync(null, Ct);
+        Check(f.Reservas[0].Estado == "pagada" && f.Asientos[0].Estado == "reservado", "pagadas históricas no expiran");
+        var e = new EstadoReservasPrueba();
+        var pending = await e.Service.CrearAsync(1, e.Request(1), Ct);
+        e.Clock.Advance(TimeSpan.FromHours(1));
+        var changed = await e.Service.CambiarAsientosAsync(1, pending.ReservaId, new() { RowVersion = pending.RowVersion, TotalEsperado = 100m,
+            Cambios = [new() { DetalleId = pending.Detalles[0].DetalleId, AsientoVueloId = 2, RowVersionAsiento = e.VersionAsiento(2) }] }, Ct);
+        Check(changed.Estado == "pendiente_pago" && changed.FechaExpiracion == pending.FechaExpiracion, "cambiar asiento no extiende plazo");
+        e.Clock.Advance(TimeSpan.FromHours(11));
+        await e.Expiry.ExpirarVueloAsync(1, Ct);
+        var expired = await e.Service.ObtenerPropiaAsync(1, pending.ReservaId, Ct);
+        Check(expired.Estado == "expirada" && expired.Detalles.All(d => d.Estado == "liberado") && e.Asientos.All(a => a.Estado == "disponible"), "al vencer libera detalles y asientos");
+        Check(e.Compras.Count == 0 && expired.Historial.Count(h => h.TipoAccion == "EXPIRACION") == 1, "rechazo de compra conserva expiración sin duplicarla");
+        var next = await e.Service.CrearAsync(2, e.Request(2), Ct);
+        Check(next.Estado == "pendiente_pago", "otro cliente puede reservar el asiento liberado");
+
+        var c = new EstadoReservasPrueba();
+        var cancelHold = await c.Service.CrearAsync(1, c.Request(1), Ct);
+        var cancelled = await c.Service.CancelarAsync(1, cancelHold.ReservaId, new() { RowVersion = cancelHold.RowVersion }, Ct);
+        var repeated = await c.Service.CancelarAsync(1, cancelHold.ReservaId, new() { RowVersion = cancelled.RowVersion }, Ct);
+        Check(repeated.Estado == "cancelada" && c.Asientos[0].Estado == "disponible" && repeated.Historial.Count(h => h.TipoAccion == "CANCELACION") == 1, "cancelación pendiente libera una sola vez");
+
+        var settings = new EstadoReservasPrueba();
+        var original = await settings.Service.CrearAsync(1, settings.Request(1), Ct);
+        settings.Options.Value.DuracionReservaMinutos = 5;
+        var shorter = await settings.Service.CrearAsync(1, settings.Request(2), Ct);
+        Check(shorter.FechaExpiracion == settings.Clock.GetUtcNow().AddMinutes(5) && original.FechaExpiracion == settings.Clock.GetUtcNow().AddHours(12), "configuración solo afecta nuevas reservas");
+        var closing = new EstadoReservasPrueba();
+        closing.Vuelo.SalidaProgramada = closing.Clock.GetUtcNow().AddMinutes(2).UtcDateTime;
+        var closeHold = await closing.Service.CrearAsync(1, closing.Request(1), Ct);
+        Check(closeHold.FechaExpiracion == closing.Clock.GetUtcNow().AddMinutes(2), "plazo nunca supera salida");
+        closing.Vuelo.Estado = "embarcando";
+        await closing.Expiry.ExpirarVueloAsync(1, Ct);
+        Check(closing.Reservas.Single().Estado == "expirada" && closing.Asientos[0].Estado == "disponible", "cierre operativo expira antes del plazo original");
+
+        var legacy = new EstadoReservasPrueba();
+        var old = await legacy.Service.CrearAsync(1, legacy.Request(1), Ct);
+        legacy.Reservas[0].FechaExpiracion = null; legacy.Reservas[0].Estado = "confirmada";
+        legacy.Clock.Advance(TimeSpan.FromDays(10)); await legacy.Expiry.ExpirarLoteAsync(null, Ct);
+        var oldRead = await legacy.Service.ObtenerPropiaAsync(1, old.ReservaId, Ct);
+        Check(oldRead.AnteriorAlFlujoTemporal && oldRead.Estado == "confirmada" && oldRead.Compra is null, "datos antiguos no se pagan ni expiran por inferencia");
+
+        await HttpChecks();
+        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        Check(!context.Database.HasPendingModelChanges(), "modelo temporal coincide con snapshot");
+        var migrations = context.GetService<IMigrationsAssembly>();
+        var info = migrations.Migrations.Single(m => m.Key.EndsWith("ReservasTemporalesCompraSimulada"));
+        var migration = migrations.CreateMigration(info.Value, context.Database.ProviderName!);
+        Check(migration.UpOperations.OfType<AddColumnOperation>().Single().IsNullable, "fecha nullable conserva registros antiguos");
+        Check(migration.UpOperations.OfType<CreateTableOperation>().Single().Name == "compras_simuladas", "tabla solo de compras simuladas");
+        Check(!migration.UpOperations.Any(op => op is UpdateDataOperation or DeleteDataOperation), "sin conversión ni borrado de datos previos");
+        Check(context.Database.GetDbConnection().State == System.Data.ConnectionState.Closed, "sin SQL Server");
+        Console.WriteLine($"OK: {count} comprobaciones de reservas temporales e histórico; sin SQL Server.");
+    }
+
+    private static async Task HttpChecks()
+    {
+        var f = new EstadoReservasPrueba();
+        var builder = WebApplication.CreateBuilder(); builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddSingleton<IReservaService>(f.Service);
+        builder.Services.AddControllers().AddApplicationPart(typeof(ReservasController).Assembly);
+        builder.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, RoleAuth>("test", _ => { });
+        builder.Services.AddAuthorization(PoliticasAcceso.Configurar);
+        builder.Services.AddProblemDetails(); builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+        builder.Services.AddEndpointsApiExplorer(); builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "Checks", Version = "v1" }));
+        await using var app = builder.Build(); app.UseExceptionHandler(); app.UseSwagger(); app.UseAuthentication(); app.UseAuthorization(); app.MapControllers(); await app.StartAsync();
+        using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
+        Check((await http.PostAsJsonAsync("/api/reservas", f.Request(1))).StatusCode == HttpStatusCode.Unauthorized, "reservar exige sesión");
+        http.DefaultRequestHeaders.Add("Authorization", "Bearer cliente");
+        Check((await http.PostAsJsonAsync("/api/reservas", f.Request(1))).StatusCode == HttpStatusCode.Created, "reserva temporal HTTP 201");
+        Check((await http.PostAsJsonAsync("/api/reservas/1/compra-simulada", new {})).StatusCode == HttpStatusCode.NotFound, "ruta simulada retirada");
+        await app.StopAsync();
+    }
+}
+
+internal sealed class RelojReservas : TimeProvider
+{
+    private long ticks = new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero).Ticks;
+    public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref ticks), TimeSpan.Zero);
+    public void Advance(TimeSpan value) => Interlocked.Add(ref ticks, value.Ticks);
+}
+internal sealed class OpcionesReservasPrueba : IOptionsMonitor<OpcionesReservas>
+{
+    // Las regresiones de asientos/expiración usan IVA 0 explícito; IvaReservasChecks prueba el valor real por defecto 15.
+    public OpcionesReservas Value = new() { PorcentajeIva = 0m };
+    public OpcionesReservas CurrentValue => Value;
+    public OpcionesReservas Get(string? name) => Value;
+    public IDisposable? OnChange(Action<OpcionesReservas, string?> listener) => null;
+}
+internal sealed class EntornoReservasPrueba : IHostEnvironment
+{
+    public string EnvironmentName { get; set; } = "Development";
+    public string ApplicationName { get; set; } = "Checks";
+    public string ContentRootPath { get; set; } = "";
+    public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+}
+internal sealed class TarifaReservasPrueba : ICalculadoraTarifas
+{
+    public void ValidarConfiguracion() { }
+    public decimal Calcular(decimal precio, string? tipo) => precio;
+}
+
+internal sealed class EstadoReservasPrueba : ICicloReservaRepository
+{
+    public readonly RelojReservas Clock = new();
+    public readonly OpcionesReservasPrueba Options = new();
+    public readonly EntornoReservasPrueba Environment = new();
+    public readonly Vuelo Vuelo;
+    public List<Reserva> Reservas = [];
+    public List<DetalleReserva> Detalles = [];
+    public List<HistorialCambioReserva> Historial = [];
+    public List<CompraSimulada> Compras = [];
+    public List<Vuelos_Backend.Models.Pagos.PagoPayPal> Pagos = [];
+    public List<AsientoVuelo> Asientos = [];
+    public readonly IReservaRepository Repository;
+    public readonly ReservaService Service;
+    public readonly ExpiracionReservasService Expiry;
+    public bool EnTransaccion { get; private set; }
+    public Action? AfterSave;
+    private long version;
+    private readonly SemaphoreSlim mutex = new(1);
+    public EstadoReservasPrueba()
+    {
+        Vuelo = new Vuelo { VueloId = 1, NumeroVuelo = "PN100", AvionId = 1, Estado = "programado", SalidaProgramada = Clock.GetUtcNow().AddDays(2).UtcDateTime,
+            Avion = new() { AvionId = 1, CapacidadTotal = 3 } };
+        for (var i = 1; i <= 3; i++) Asientos.Add(new AsientoVuelo { AsientoVueloId = i, VueloId = 1, Vuelo = Vuelo, AsientoFisicoId = i, Precio = 100m, Estado = "disponible", RowVersion = Next(),
+            AsientoFisico = new() { AsientoFisicoId = i, AvionId = 1, CodigoAsiento = i + "A" } });
+        Repository = DispatchProxy.Create<IReservaRepository, RepositorioReservaPrueba>();
+        ((RepositorioReservaPrueba)(object)Repository).Datos = this;
+        Expiry = new(Repository, this, Clock); Service = new(Repository, new TarifaReservasPrueba(), Clock, Options, this, Expiry);
+    }
+    private byte[] Next() => BitConverter.GetBytes(++version);
+    public string VersionAsiento(int id) => Convert.ToBase64String(Asientos.Single(a => a.AsientoVueloId == id).RowVersion);
+    public CrearReservaRequest Request(int asiento) => new() { VueloId = 1, TotalEsperado = 100m, Pasajeros = [new() { AsientoVueloId = asiento, RowVersionAsiento = VersionAsiento(asiento),
+        Cedula = "1234567890", PrimerNombre = "Prueba", PrimerApellido = "Prueba", TipoPasajero = "adulto" }] };
+    public void LimpiarSeguimiento() { }
+    public Task<CompraSimulada?> ObtenerCompraAsync(int id, CancellationToken ct) => Task.FromResult(Compras.SingleOrDefault(c => c.ReservaId == id));
+    public Task<bool> PagoImpideCambiosAsync(int id, CancellationToken ct, bool soloCaptura = false) => Task.FromResult(Pagos.Any(p => p.ReservaId == id && (p.BloqueaReserva || p.FechaCaptura != null || !soloCaptura && p.Estado != "fallido" && p.Reserva.FechaExpiracion > Clock.GetUtcNow().UtcDateTime)));
+    public void AgregarCompra(CompraSimulada compra) { if (Compras.Any(c => c.ReservaId == compra.ReservaId)) throw new Exception("Compra duplicada"); Compras.Add(compra); }
+    public Task<IReadOnlyList<int>> ObtenerVuelosVencidosAsync(DateTime now, int? user, CancellationToken ct) => Task.FromResult<IReadOnlyList<int>>(
+        Reservas.Any(r => r.Estado == "pendiente_pago" && !Pagos.Any(p => p.ReservaId == r.ReservaId && p.BloqueaReserva) && (!user.HasValue || r.UsuarioId == user) && (r.FechaExpiracion <= now || Vuelo.Estado != "programado" && Vuelo.Estado != "retrasado" || Vuelo.SalidaProgramada <= now)) ? new[] { 1 } : Array.Empty<int>());
+    public async Task ExpirarPendientesAsync(int vueloId, DateTime now, bool force, CancellationToken ct)
+    {
+        foreach (var r in Reservas.Where(r => r.Estado == "pendiente_pago" && !Pagos.Any(p => p.ReservaId == r.ReservaId && p.BloqueaReserva) && (force || r.FechaExpiracion <= now)))
+        {
+            r.Estado = "expirada";
+            foreach (var d in Detalles.Where(d => d.ReservaId == r.ReservaId && d.Estado == "activo"))
+            {
+                d.Estado = "liberado"; var a = Asientos.Single(a => a.AsientoVueloId == d.AsientoVueloId); a.Estado = "disponible"; a.RowVersion = Next();
+            }
+            Historial.Add(new() { ReservaId = r.ReservaId, TipoAccion = "EXPIRACION", FechaAccion = now }); r.RowVersion = Next();
+        }
+        await Task.CompletedTask;
+    }
+    private static AsientoVuelo Copy(AsientoVuelo a) => new() { AsientoVueloId = a.AsientoVueloId, VueloId = a.VueloId, AsientoFisicoId = a.AsientoFisicoId, Precio = a.Precio,
+        Estado = a.Estado, RowVersion = a.RowVersion.ToArray(), AsientoFisico = a.AsientoFisico, Vuelo = a.Vuelo };
+    public object? Invoke(string name, object?[] args)
+    {
+        int Id(int n) => (int)args[n]!;
+        switch (name)
+        {
+            case "IniciarTransaccionAsync": return Begin();
+            case "BloquearVueloAsync": return Task.FromResult<Vuelo?>(Id(0) == 1 ? Vuelo : null);
+            case "ObtenerVueloPropioAsync": return Task.FromResult<int?>(Reservas.SingleOrDefault(r => r.ReservaId == Id(0) && r.UsuarioId == Id(1))?.VueloId);
+            case "BloquearPropiaAsync": return Task.FromResult(Reservas.SingleOrDefault(r => r.ReservaId == Id(0) && r.UsuarioId == Id(1)));
+            case "ObtenerAsientosAsync": return Task.FromResult<IReadOnlyList<AsientoVuelo>>(Asientos.Where(a => ((int[])args[1]!).Contains(a.AsientoVueloId)).Select(Copy).ToArray());
+            case "ObtenerActivosAsync": return Task.FromResult<IReadOnlyList<DetalleReserva>>(Detalles.Where(d => d.ReservaId == Id(0) && d.Estado == "activo").ToArray());
+            case "CambiarEstadoAsientoAsync":
+                var a = Asientos.Single(a => a.AsientoVueloId == Id(0));
+                if (a.Estado != (string)args[2]! || !a.RowVersion.SequenceEqual((byte[])args[4]!)) return Task.FromResult(0);
+                a.Estado = (string)args[3]!; a.RowVersion = Next(); return Task.FromResult(1);
+            case "AgregarReserva": var r = (Reserva)args[0]!; r.ReservaId = Reservas.Select(r => r.ReservaId).DefaultIfEmpty().Max() + 1; r.RowVersion = Next(); Reservas.Add(r); return null;
+            case "AgregarDetalle": var d = (DetalleReserva)args[0]!; d.DetalleId = Detalles.Count + 1; if (d.Reserva is not null) d.ReservaId = d.Reserva.ReservaId;
+                d.AsientoVuelo = Asientos.Single(a => a.AsientoVueloId == d.AsientoVueloId); Detalles.Add(d); return null;
+            case "AgregarHistorial": Historial.Add((HistorialCambioReserva)args[0]!); return null;
+            case "PrepararVersionReserva": ((Reserva)args[0]!).RowVersion = Next(); return null;
+            case "GuardarAsync": var hook = AfterSave; AfterSave = null; hook?.Invoke(); return Task.CompletedTask;
+            case "ObtenerPropiaAsync":
+                var propia = Reservas.SingleOrDefault(r => r.ReservaId == Id(0) && r.UsuarioId == Id(1));
+                return Task.FromResult(propia is null ? null : new ReservaLectura(propia, Detalles.Where(d => d.ReservaId == propia.ReservaId).ToArray(), Historial.Where(h => h.ReservaId == propia.ReservaId).ToArray()));
+            case "BuscarPropiasAsync": var filtro = (FiltroReservas)args[1]!; var rows = Reservas.Where(r => r.UsuarioId == Id(0) && (filtro.Estado is null || r.Estado == filtro.Estado)).ToArray();
+                return Task.FromResult(new ResultadoBusquedaReservas(rows, rows.Length));
+            default: throw new Exception("Método no preparado: " + name);
+        }
+    }
+    private async Task<ITransaccionReserva> Begin()
+    {
+        await mutex.WaitAsync(); EnTransaccion = true; return new Transaction(this);
+    }
+    private sealed class Transaction : ITransaccionReserva
+    {
+        private readonly EstadoReservasPrueba f;
+        private readonly Reserva[] reservas;
+        private readonly (Reserva r, string state, decimal total, DateTime? expiry, byte[] version, decimal? subtotal, decimal? porcentaje, decimal? iva)[] reserveState;
+        private readonly DetalleReserva[] details;
+        private readonly (DetalleReserva d, string state)[] detailState;
+        private readonly (AsientoVuelo a, string state, byte[] version)[] seats;
+        private readonly HistorialCambioReserva[] history;
+        private readonly CompraSimulada[] purchases;
+        private bool committed;
+        public Transaction(EstadoReservasPrueba owner)
+        {
+            f = owner; reservas = f.Reservas.ToArray(); reserveState = reservas.Select(r => (r, r.Estado, r.MontoTotal, r.FechaExpiracion, r.RowVersion.ToArray(), r.Subtotal, r.PorcentajeIva, r.MontoIva)).ToArray();
+            details = f.Detalles.ToArray(); detailState = details.Select(d => (d, d.Estado)).ToArray();
+            seats = f.Asientos.Select(a => (a, a.Estado, a.RowVersion.ToArray())).ToArray(); history = f.Historial.ToArray(); purchases = f.Compras.ToArray();
+        }
+        public Task ConfirmarAsync(CancellationToken ct) { committed = true; return Task.CompletedTask; }
+        public ValueTask DisposeAsync()
+        {
+            if (!committed)
+            {
+                f.Reservas = reservas.ToList(); f.Detalles = details.ToList(); f.Historial = history.ToList(); f.Compras = purchases.ToList();
+                foreach (var x in reserveState) { x.r.Estado = x.state; x.r.MontoTotal = x.total; x.r.FechaExpiracion = x.expiry; x.r.RowVersion = x.version; x.r.Subtotal = x.subtotal; x.r.PorcentajeIva = x.porcentaje; x.r.MontoIva = x.iva; }
+                foreach (var x in detailState) x.d.Estado = x.state;
+                foreach (var x in seats) { x.a.Estado = x.state; x.a.RowVersion = x.version; }
+            }
+            f.EnTransaccion = false; f.mutex.Release(); return ValueTask.CompletedTask;
+        }
+    }
+}
+public class RepositorioReservaPrueba : DispatchProxy
+{
+    internal EstadoReservasPrueba Datos = null!;
+    protected override object? Invoke(MethodInfo? method, object?[]? args) => Datos.Invoke(method!.Name, args!);
+}

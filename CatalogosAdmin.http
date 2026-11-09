@@ -1,0 +1,49 @@
+# Catálogos solo de consulta. Usar los IDs existentes o devueltos por las importaciones.
+# Altas de aeropuertos: usar ImportacionAeropuertos.http; solo se mantienen sus consultas.
+@baseUrl = http://localhost:5236
+@tokenAdmin = PEGAR_TOKEN_ADMIN
+@id = 1
+### Listar aeropuertos activos; filtros: buscar, activo, incluirInactivos, pagina, tamanoPagina
+GET {{baseUrl}}/api/admin/aeropuertos?pagina=1&tamanoPagina=20
+Authorization: Bearer {{tokenAdmin}}
+
+### Consultar detalle de aeropuertos, incluidos inactivos
+GET {{baseUrl}}/api/admin/aeropuertos/{{id}}
+Authorization: Bearer {{tokenAdmin}}
+
+### Listar aviones activos; filtros: buscar, activo, incluirInactivos, pagina, tamanoPagina
+GET {{baseUrl}}/api/admin/aviones?pagina=1&tamanoPagina=20
+Authorization: Bearer {{tokenAdmin}}
+
+### Consultar detalle de aviones, incluidos inactivos
+GET {{baseUrl}}/api/admin/aviones/{{id}}
+Authorization: Bearer {{tokenAdmin}}
+
+### Alta de aviones únicamente mediante importación; usar ImportacionAviones.http.
+
+### Listar categorias-asiento activos; filtros: buscar, activo, incluirInactivos, pagina, tamanoPagina
+GET {{baseUrl}}/api/admin/categorias-asiento?pagina=1&tamanoPagina=20
+Authorization: Bearer {{tokenAdmin}}
+
+### Consultar detalle de categorias-asiento, incluidos inactivos
+GET {{baseUrl}}/api/admin/categorias-asiento/{{id}}
+Authorization: Bearer {{tokenAdmin}}
+
+### Listar asientos-fisicos activos; filtros: buscar, activo, incluirInactivos, pagina, tamanoPagina
+GET {{baseUrl}}/api/admin/asientos-fisicos?pagina=1&tamanoPagina=20&avionId=1
+Authorization: Bearer {{tokenAdmin}}
+
+### Consultar detalle de asientos-fisicos, incluidos inactivos
+GET {{baseUrl}}/api/admin/asientos-fisicos/{{id}}
+Authorization: Bearer {{tokenAdmin}}
+
+### Sin token: 401. Con token cliente en cualquiera de las operaciones: 403.
+GET {{baseUrl}}/api/admin/aviones
+
+### Incluir catálogo histórico
+GET {{baseUrl}}/api/admin/aeropuertos?incluirInactivos=true
+Authorization: Bearer {{tokenAdmin}}
+
+### Solo inactivos
+GET {{baseUrl}}/api/admin/aeropuertos?activo=false
+Authorization: Bearer {{tokenAdmin}}

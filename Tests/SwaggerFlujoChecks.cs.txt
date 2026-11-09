@@ -1,0 +1,61 @@
+using System;
+using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Vuelos_Backend.Authentication;
+using Vuelos_Backend.Controllers.Administracion;
+using Vuelos_Backend.Swagger;
+
+internal static class SwaggerFlujoChecks
+{
+    public static async Task RunAsync()
+    {
+        var count = 0;
+        void Check(bool ok, string label) { if (!ok) throw new Exception(label); count++; }
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddControllers().AddApplicationPart(typeof(VentasAdminController).Assembly);
+        builder.Services.AddEndpointsApiExplorer();
+        // Misma configuración que usa Program.cs, sin worker ni acceso a SQL Server.
+        builder.Services.AddSwaggerGen(DocumentacionApi.Configurar);
+        builder.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, RoleAuth>("test", _ => { });
+        builder.Services.AddAuthorization(PoliticasAcceso.Configurar);
+        await using var app = builder.Build();
+        app.UseSwagger(); app.UseSwaggerUI(o => o.SwaggerEndpoint("/swagger/v1/swagger.json", "Pacific Nexus Airways v1"));
+        app.UseAuthentication(); app.UseAuthorization(); app.MapControllers(); await app.StartAsync();
+        using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
+        using var json = JsonDocument.Parse(await http.GetStringAsync("/swagger/v1/swagger.json"));
+        var root = json.RootElement;
+        var paths = root.GetProperty("paths");
+        foreach (var path in new[] { "/api/autenticacion/login", "/api/admin/aeropuertos", "/api/admin/categorias-asiento", "/api/admin/aviones",
+            "/api/admin/vuelos", "/api/vuelos/{id}/asientos", "/api/reservas", "/api/reservas/{id}/paypal/orden", "/api/admin/ventas/resumen" })
+            Check(paths.TryGetProperty(path, out _), "Swagger contiene " + path);
+        var sale = paths.GetProperty("/api/admin/ventas/resumen").GetProperty("get");
+        Check(sale.GetProperty("tags")[0].GetString() == "11. Ventas acumuladas (admin)", "ventas visible en grupo propio");
+        Check(sale.GetProperty("responses").TryGetProperty("200", out _) && sale.GetProperty("responses").TryGetProperty("403", out _), "respuestas del resumen documentadas");
+        Check(root.GetProperty("security")[0].TryGetProperty("Bearer", out _), "autorización Bearer global");
+        Check(paths.GetProperty("/api/autenticacion/login").GetProperty("post").GetProperty("security").GetArrayLength() == 0, "login público documentado");
+        Check(!sale.TryGetProperty("security", out var security) || security.GetArrayLength() > 0, "ventas no aparece como anónima");
+        var schemas = root.GetProperty("components").GetProperty("schemas");
+        Check(!paths.GetProperty("/api/admin/aviones").TryGetProperty("post", out _), "Swagger no permite alta individual de aviones");
+        Check(!schemas.TryGetProperty("CrearAvionRequest", out _), "DTO de alta individual no se expone");
+        Check(paths.TryGetProperty("/api/admin/aviones/importacion", out _) && paths.TryGetProperty("/api/admin/aviones/importacion/validar", out _), "Swagger conserva las dos importaciones");
+        var flight = schemas.GetProperty("CrearVueloAdminRequest").GetProperty("example");
+        Check(flight.GetProperty("tarifasPorClase").GetArrayLength() == 3 && !flight.TryGetProperty("asientos", out _), "ejemplo de precios por clase");
+        Check(schemas.GetProperty("CrearOrdenPayPalRequest").GetProperty("example").TryGetProperty("rowVersion", out _), "ejemplo de orden PayPal");
+        Check(schemas.GetProperty("ResumenVentasResponse").GetProperty("example").GetProperty("esSandbox").GetBoolean(), "ejemplo de ventas identificado como Sandbox");
+        var description = root.GetProperty("info").GetProperty("description").GetString()!;
+        Check(description.Contains("GET /api/admin/ventas/resumen") && description.Contains("TarifasPasajero:Porcentajes"), "guía del flujo y prerrequisitos en Swagger");
+        Check((await http.GetStringAsync("/swagger/index.html")).Contains("swagger-ui"), "Swagger UI disponible");
+        await app.StopAsync();
+        Console.WriteLine($"OK: {count} comprobaciones del flujo y ventas en Swagger; sin SQL Server.");
+    }
+}

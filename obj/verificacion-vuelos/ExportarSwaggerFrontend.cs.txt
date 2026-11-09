@@ -1,0 +1,28 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Vuelos_Backend.Controllers.Administracion;
+using Vuelos_Backend.Swagger;
+
+internal static class ExportarSwaggerFrontend
+{
+    public static async Task Main(string[] args)
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddControllers().AddApplicationPart(typeof(VentasAdminController).Assembly);
+        builder.Services.AddEndpointsApiExplorer(); builder.Services.AddSwaggerGen(DocumentacionApi.Configurar);
+        await using var app = builder.Build(); app.UseSwagger(); app.MapControllers(); await app.StartAsync();
+        using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
+        await File.WriteAllTextAsync(args[0], await http.GetStringAsync("/swagger/v1/swagger.json"));
+        await app.StopAsync();
+    }
+}

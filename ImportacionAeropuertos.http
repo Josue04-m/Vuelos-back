@@ -1,0 +1,53 @@
+@baseUrl = http://localhost:5236
+@tokenAdmin = TOKEN_ADMIN
+@paisIso = EC
+@soloServicioRegular = true
+@omitirIncompletos = false
+
+### Validar primero: no escribe. Vaciar paisIso para seleccionar todos los países.
+POST {{baseUrl}}/api/admin/aeropuertos/importacion/validar
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: multipart/form-data; boundary=AeropuertosBoundary
+
+--AeropuertosBoundary
+Content-Disposition: form-data; name="paisIso"
+
+{{paisIso}}
+--AeropuertosBoundary
+Content-Disposition: form-data; name="soloServicioRegular"
+
+{{soloServicioRegular}}
+--AeropuertosBoundary
+Content-Disposition: form-data; name="omitirIncompletos"
+
+{{omitirIncompletos}}
+--AeropuertosBoundary
+Content-Disposition: form-data; name="archivo"; filename="airports.csv"
+Content-Type: text/csv
+
+< ./docs/airports.csv
+--AeropuertosBoundary--
+
+### Confirmar DESPUÉS de revisar vista previa. Sí escribe toda la selección.
+POST {{baseUrl}}/api/admin/aeropuertos/importacion
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: multipart/form-data; boundary=AeropuertosBoundary
+
+--AeropuertosBoundary
+Content-Disposition: form-data; name="paisIso"
+
+{{paisIso}}
+--AeropuertosBoundary
+Content-Disposition: form-data; name="soloServicioRegular"
+
+{{soloServicioRegular}}
+--AeropuertosBoundary
+Content-Disposition: form-data; name="omitirIncompletos"
+
+{{omitirIncompletos}}
+--AeropuertosBoundary
+Content-Disposition: form-data; name="archivo"; filename="airports.csv"
+Content-Type: text/csv
+
+< ./docs/airports.csv
+--AeropuertosBoundary--

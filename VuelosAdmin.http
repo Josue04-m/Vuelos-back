@@ -1,0 +1,116 @@
+@baseUrl = http://localhost:5161
+@tokenAdmin = PEGAR_TOKEN_ADMIN
+@vueloId = 1
+@avionId = 1
+@origenId = 1
+@destinoId = 2
+@categoriaId1 = 1
+@categoriaId2 = 2
+@categoriaId3 = 3
+@nuevoAvionId = 2
+@precioUSD1 = DEFINIR_PRECIO_USD
+@precioUSD2 = DEFINIR_PRECIO_USD
+@precioUSD3 = DEFINIR_PRECIO_USD
+@version = PEGAR_VERSION_DEL_GET
+@asientoVueloId = 1
+@rowVersionAsiento = PEGAR_ROWVERSION_BASE64
+
+### Listar vuelos (solo admin); mismos filtros y paginación que la consulta existente
+GET {{baseUrl}}/api/admin/vuelos?pagina=1&tamanoPagina=20
+Authorization: Bearer {{tokenAdmin}}
+
+### Consultar vuelo y copiar version antes de editar o cambiar estado
+GET {{baseUrl}}/api/admin/vuelos/{{vueloId}}
+Authorization: Bearer {{tokenAdmin}}
+
+### Crear: un precio por clase; los asientos del vuelo se generan automáticamente
+# Ajustar los IDs a las categorías reales del avión. Omitir las categorías que no estén presentes.
+# Los precios no tienen valor predeterminado: sustituir las variables por números en USD.
+POST {{baseUrl}}/api/admin/vuelos
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: application/json
+
+{
+  "numeroVuelo": "PN100",
+  "avionId": {{avionId}},
+  "aeropuertoOrigenId": {{origenId}},
+  "aeropuertoDestinoId": {{destinoId}},
+  "salidaProgramada": "2026-12-10T10:00:00Z",
+  "llegadaProgramada": "2026-12-10T11:00:00Z",
+  "tarifasPorClase": [
+    { "categoriaId": {{categoriaId1}}, "precio": {{precioUSD1}} },
+    { "categoriaId": {{categoriaId2}}, "precio": {{precioUSD2}} },
+    { "categoriaId": {{categoriaId3}}, "precio": {{precioUSD3}} }
+  ]
+}
+
+### Editar programación; conservar avión, asientos, precios y estado
+PUT {{baseUrl}}/api/admin/vuelos/{{vueloId}}
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: application/json
+
+{
+  "numeroVuelo": "PN100",
+  "aeropuertoOrigenId": {{origenId}},
+  "aeropuertoDestinoId": {{destinoId}},
+  "salidaProgramada": "2026-12-10T12:00:00Z",
+  "llegadaProgramada": "2026-12-10T13:00:00Z",
+  "version": "{{version}}"
+}
+
+### Cambiar avión: sin retenciones vigentes, compras ni reservas antiguas, y antes del embarque/salida
+# Consultar antes GET administrativo y usar la versión vigente.
+PATCH {{baseUrl}}/api/admin/vuelos/{{vueloId}}/avion
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: application/json
+
+{
+  "avionId": {{nuevoAvionId}},
+  "version": "{{version}}",
+  "tarifasPorClase": [
+    { "categoriaId": {{categoriaId1}}, "precio": {{precioUSD1}} },
+    { "categoriaId": {{categoriaId2}}, "precio": {{precioUSD2}} },
+    { "categoriaId": {{categoriaId3}}, "precio": {{precioUSD3}} }
+  ]
+}
+
+### Cambiar estado operativo del vuelo (ej. embarcando, retrasado, en vuelo, finalizado, cancelado)
+POST {{baseUrl}}/api/admin/vuelos/{{vueloId}}/estado
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: application/json
+
+{
+  "nuevoEstado": "embarcando",
+  "version": "{{version}}",
+  "observacion": "Inicio de embarque en puerta 4."
+}
+
+### Consultar historial de estados operativos del vuelo
+GET {{baseUrl}}/api/admin/vuelos/{{vueloId}}/historial
+Authorization: Bearer {{tokenAdmin}}
+
+### Consultar asientos por vuelo con disponibilidad, precio y estado de reservas
+GET {{baseUrl}}/api/admin/vuelos/{{vueloId}}/asientos
+Authorization: Bearer {{tokenAdmin}}
+
+### Actualizar precio o bloquear/desbloquear un asiento por vuelo (exige RowVersion)
+PATCH {{baseUrl}}/api/admin/vuelos/{{vueloId}}/asientos/{{asientoVueloId}}
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: application/json
+
+{
+  "precio": 135.00,
+  "estado": "bloqueado",
+  "rowVersion": "{{rowVersionAsiento}}"
+}
+
+### Consultar reservas y pasajeros asignados a este vuelo
+GET {{baseUrl}}/api/admin/vuelos/{{vueloId}}/reservas
+Authorization: Bearer {{tokenAdmin}}
+
+### Sin sesión: 401. Con token de cliente en cualquiera de las operaciones: 403.
+GET {{baseUrl}}/api/admin/vuelos
+
+### Vuelo inexistente: 404 (sustituir por un ID que no exista)
+GET {{baseUrl}}/api/admin/vuelos/2147483647
+Authorization: Bearer {{tokenAdmin}}

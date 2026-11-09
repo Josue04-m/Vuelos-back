@@ -1,0 +1,100 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Vuelos_Backend.Authentication;
+using Vuelos_Backend.Controllers.Administracion;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Interface.Ventas;
+using Vuelos_Backend.Middleware;
+using Vuelos_Backend.Models.Reservas;
+using Vuelos_Backend.Models.Reservas.DTOs;
+using Vuelos_Backend.Models.Ventas.DTOs;
+using Vuelos_Backend.Repositories.Ventas;
+using Vuelos_Backend.Services.Ventas;
+
+internal static class VentasChecks
+{
+    private static int count;
+    private static void Check(bool ok, string name) { if (!ok) throw new Exception(name); count++; }
+    public static async Task RunAsync()
+    {
+        var ct = CancellationToken.None;
+        var f = new PayPalFixture();
+        var repository = new VentasRepoPrueba(() => f.F.Pagos);
+        var service = new VentasService(repository);
+        var empty = await service.ObtenerResumenAsync(new(), ct);
+        Check(empty.TotalVentas == 0 && empty.CantidadCompras == 0 && empty.EsSandbox && empty.Moneda == "USD", "acumulado vacío Sandbox");
+        await f.Crear();
+        Check((await service.ObtenerResumenAsync(new(), ct)).TotalVentas == 0, "orden pendiente no suma");
+        await f.Service.CapturarAsync(1,1,ct); await f.Service.CapturarAsync(1,1,ct);
+        Check((await service.ObtenerResumenAsync(new(), ct)).TotalVentas == 100, "captura repetida cuenta una vez");
+        f.F.Pagos.Add(new() { PagoId=Guid.NewGuid(),ReservaId=2,Monto=100,FechaCaptura=f.F.Clock.GetUtcNow().UtcDateTime,Estado="revision" });
+        f.F.Pagos.Add(new() { PagoId=Guid.NewGuid(),ReservaId=3,Monto=900,FechaCaptura=f.F.Clock.GetUtcNow().UtcDateTime,Entorno="Live" });
+        Check((await service.ObtenerResumenAsync(new(), ct)).TotalVentas == 200, "bruto conserva capturas en revisión y separa Live");
+        Check((await service.ObtenerResumenAsync(new(){Entorno="Live"}, ct)).TotalVentas == 900, "ventas Live separadas");
+        Check((await service.ObtenerResumenAsync(new() { Desde = new DateOnly(2026, 11, 2) }, ct)).CantidadCompras == 0, "filtro UTC de captura");
+        var sample = new List<Vuelos_Backend.Models.Pagos.PagoPayPal> {
+            new() { Monto = 0.10m, FechaCaptura = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc) },
+            new() { Monto = 0.20m, FechaCaptura = new DateTime(2026, 11, 1, 23, 59, 59, DateTimeKind.Utc) },
+            new() { Monto = 1m, FechaCaptura = new DateTime(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc) }
+        };
+        var decimalService = new VentasService(new VentasRepoPrueba(() => sample));
+        var daily = await decimalService.ObtenerResumenAsync(new() { Desde = new(2026, 11, 1), Hasta = new(2026, 11, 1) }, ct);
+        Check(daily.TotalVentas == 0.30m && daily.CantidadCompras == 2, "decimal exacto y día UTC completo");
+        Check((await decimalService.ObtenerResumenAsync(new() { Hasta = DateOnly.MaxValue }, ct)).CantidadCompras == 3, "fecha máxima no desborda");
+        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        var query = (IQueryable<AcumuladoVentas>)typeof(VentasRepository).GetMethod("ConsultaAcumulado", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(new VentasRepository(context), new object?[] { new DateTime(2026, 11, 1), new DateTime(2026, 11, 2), "Sandbox" })!;
+        var sql = query.ToQueryString();
+        Check(sql.Contains("SUM(") && sql.Contains("COUNT_BIG(") && !sql.Contains("JOIN"), "una consulta SQL suma y cuenta sin ocultar compras por filtros de usuario o reserva");
+        Check(!context.Database.HasPendingModelChanges(), "sin migración adicional");
+        await HttpChecks(service);
+        Console.WriteLine($"OK: {count} comprobaciones del acumulado de capturas PayPal; sin SQL Server.");
+    }
+
+    private static async Task HttpChecks(IVentasService service)
+    {
+        var builder = WebApplication.CreateBuilder(); builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddSingleton(service);
+        builder.Services.AddControllers().AddApplicationPart(typeof(VentasAdminController).Assembly);
+        builder.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, RoleAuth>("test", _ => { });
+        builder.Services.AddAuthorization(PoliticasAcceso.Configurar);
+        builder.Services.AddProblemDetails(); builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+        builder.Services.AddEndpointsApiExplorer(); builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "Checks", Version = "v1" }));
+        await using var app = builder.Build(); app.UseExceptionHandler(); app.UseSwagger(); app.UseAuthentication(); app.UseAuthorization(); app.MapControllers(); await app.StartAsync();
+        using var http = new HttpClient { BaseAddress = new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
+        Check((await http.GetAsync("/api/admin/ventas/resumen")).StatusCode == HttpStatusCode.Unauthorized, "resumen requiere sesión");
+        http.DefaultRequestHeaders.Add("Authorization", "Bearer cliente");
+        Check((await http.GetAsync("/api/admin/ventas/resumen")).StatusCode == HttpStatusCode.Forbidden, "cliente no accede a ventas globales");
+        http.DefaultRequestHeaders.Remove("Authorization"); http.DefaultRequestHeaders.Add("Authorization", "Bearer admin");
+        var result = await http.GetFromJsonAsync<ResumenVentasResponse>("/api/admin/ventas/resumen");
+        Check(result!.TotalVentas == 200m && result.CantidadCompras == 2, "resumen admin 200");
+        Check((await http.GetAsync("/api/admin/ventas/resumen?desde=2026-11-02&hasta=2026-11-01")).StatusCode == HttpStatusCode.BadRequest, "rango inválido 400");
+        Check((await http.GetAsync("/api/admin/ventas/resumen?desde=incorrecta")).StatusCode == HttpStatusCode.BadRequest, "fecha inválida 400");
+        Check((await http.GetStringAsync("/swagger/v1/swagger.json")).Contains("/api/admin/ventas/resumen"), "Swagger resumen de ventas");
+        await app.StopAsync();
+    }
+}
+
+internal sealed class VentasRepoPrueba(Func<List<Vuelos_Backend.Models.Pagos.PagoPayPal>> compras) : IVentasRepository
+{
+    public Task<AcumuladoVentas> AcumularAsync(DateTime? desde, DateTime? hasta, CancellationToken ct, string entorno = "Sandbox")
+    {
+        var rows = compras().Where(c => c.FechaCaptura != null && c.Entorno == entorno && c.Moneda == "USD" && (!desde.HasValue || c.FechaCaptura >= desde) && (!hasta.HasValue || c.FechaCaptura < hasta)).ToArray();
+        return Task.FromResult(new AcumuladoVentas(rows.Sum(c => c.Monto), rows.LongLength));
+    }
+}

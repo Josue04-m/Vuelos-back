@@ -1,0 +1,13 @@
+using System;
+using Microsoft.Extensions.Options;
+using Vuelos_Backend.Models.Reservas;
+using Vuelos_Backend.Services.Reservas;
+internal static class DiagnosticoTarifasReserva
+{
+    public static void Main()
+    {
+        var calculadora = new CalculadoraTarifas(Options.Create(new OpcionesTarifasPasajero()));
+        try { calculadora.ValidarConfiguracion(); Console.WriteLine("Configuración válida"); }
+        catch (ReservaOperacionException ex) { Console.WriteLine("Reproducción sin SQL: " + ex.Error + " / " + ex.Codigo + " / " + ex.Message); }
+    }
+}

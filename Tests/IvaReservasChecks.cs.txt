@@ -1,0 +1,145 @@
+using System;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Vuelos_Backend.Authentication;
+using Vuelos_Backend.Controllers.Reservas;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Interface.Reservas;
+using Vuelos_Backend.Middleware;
+using Vuelos_Backend.Models.Reservas;
+using Vuelos_Backend.Models.Reservas.DTOs;
+using Vuelos_Backend.Services.Reservas;
+using Vuelos_Backend.Services.Ventas;
+
+internal static class IvaReservasChecks
+{
+    private static int count;
+    private static readonly CancellationToken Ct=CancellationToken.None;
+    private static void Check(bool ok,string label){if(!ok)throw new Exception(label);count++;}
+    private static async Task Error(Func<Task> action,string codigo)
+    {try{await action();throw new Exception("Falta rechazo: "+codigo);}catch(ReservaOperacionException e){Check(e.Codigo==codigo,codigo);}}
+    public static async Task RunAsync()
+    {
+        Check(new OpcionesReservas().PorcentajeIva==15,"IVA inicial del laboratorio es 15");
+        var example=ImportesReserva.Calcular(350,15);
+        Check(example.Subtotal==350 && example.MontoIva==52.50m && example.Total==402.50m,"ejemplo solicitado 350 + 52.50 = 402.50");
+        Check(ImportesReserva.Calcular(0.10m,15).MontoIva==0.02m,"medio centavo redondea alejándose de cero sobre subtotal global");
+        Check(ImportesReserva.Calcular(0,15).Total==0 && ImportesReserva.Calcular(100,0).Total==100,"subtotal cero y tasa cero válidos");
+        Check(ImportesReserva.Calcular(100,5.5m).MontoIva==5.5m && ImportesReserva.Calcular(100,100).Total==200,"tasa decimal y límite 100");
+        foreach(var rate in new[]{-1m,100.01m,15.001m})await Error(()=>Task.Run(()=>ImportesReserva.Calcular(100,rate)),"iva_sin_configurar");
+        foreach(var subtotal in new[]{-1m,1.001m,99999999.99m})await Error(()=>Task.Run(()=>ImportesReserva.Calcular(subtotal,15)),"importe_fuera_de_rango");
+
+        var f=new EstadoReservasPrueba();f.Options.Value.PorcentajeIva=15;
+        f.Asientos[0].Precio=187.50m;f.Asientos[1].Precio=200m;
+        var calculator=new CalculadoraTarifas(Options.Create(new OpcionesTarifasPasajero{Porcentajes=new(){{"adulto",100},{"joven",100},{"nino",80},{"bebe",75}}}));
+        var service=new ReservaService(f.Repository,calculator,f.Clock,f.Options,f,f.Expiry);
+        var req=new CrearReservaRequest{VueloId=1,TotalEsperado=402.50m,Pasajeros=[
+            f.Request(1).Pasajeros[0] with {TipoPasajero="nino"},
+            f.Request(2).Pasajeros[0] with {Cedula="0987654321",TipoPasajero="joven"}]};
+        try{await service.CrearAsync(1,req with {TotalEsperado=350},Ct);throw new Exception("Aceptó subtotal como total");}
+        catch(ReservaOperacionException e){Check(e.Codigo=="tarifa_actualizada" && e.MontoTotalActual==402.50m && f.Reservas.Count==0 && f.Asientos.All(a=>a.Estado=="disponible"),"totalEsperado exige bruto y rechaza antes de retener");}
+        var hold=await service.CrearAsync(1,req,Ct);
+        Check(hold.Subtotal==350 && hold.PorcentajeIva==15 && hold.MontoIva==52.5m && hold.MontoTotal==402.5m,"reserva persiste desglose exacto");
+        Check(hold.Detalles.Select(d=>d.PrecioCongelado).Order().SequenceEqual(new[]{150m,200m}),"detalle guarda precio después de descuento, antes de IVA");
+        var paypal=new PayPalFixture(f);var order=await paypal.Service.CrearAsync(1,hold.ReservaId,new(){RowVersion=hold.RowVersion},Ct);
+        Check(order.Monto==402.5m && order.Subtotal==350 && order.MontoIva==52.5m && f.Pagos[0].Monto==402.5m,"orden PayPal cobra el total incluido IVA");
+        var paid=await paypal.Service.CapturarAsync(1,hold.ReservaId,Ct);
+        Check(paid.EstadoReserva=="pagada" && paid.Estado=="completado" && paid.Monto==402.5m,"captura valida suma neta más IVA y acredita exactamente 402.50");
+        await paypal.Service.CapturarAsync(1,hold.ReservaId,Ct);
+        Check(paypal.Provider.Capturas==1,"repetir captura con IVA no duplica cobro");
+        var sales=await new VentasService(new VentasRepoPrueba(()=>f.Pagos)).ObtenerResumenAsync(new(),Ct);
+        Check(sales.TotalVentas==402.50m && sales.CantidadCompras==1,"ventas acumulan bruto con IVA sin duplicar");
+        f.Options.Value.PorcentajeIva=20;
+        var history=await service.ObtenerPropiaAsync(1,hold.ReservaId,Ct);
+        Check(history.PorcentajeIva==15 && history.MontoTotal==402.5m,"cambio de configuración no recalcula compra existente");
+
+        var change=new EstadoReservasPrueba();change.Options.Value.PorcentajeIva=15;
+        var r=await change.Service.CrearAsync(1,change.Request(1) with {TotalEsperado=115},Ct);
+        change.Options.Value.PorcentajeIva=20;change.Asientos[1].Precio=200;
+        var changed=await change.Service.CambiarAsientosAsync(1,r.ReservaId,new(){RowVersion=r.RowVersion,TotalEsperado=230,
+            Cambios=[new(){DetalleId=r.Detalles[0].DetalleId,AsientoVueloId=2,RowVersionAsiento=change.VersionAsiento(2)}]},Ct);
+        Check(changed.Subtotal==200 && changed.PorcentajeIva==15 && changed.MontoIva==30 && changed.MontoTotal==230,"cambiar asiento mantiene tasa congelada y recalcula base/IVA");
+        var fresh=await change.Service.CrearAsync(1,change.Request(3) with {TotalEsperado=120},Ct);
+        Check(fresh.PorcentajeIva==20 && fresh.MontoIva==20,"nueva tasa solo afecta nuevas reservas");
+        var listing=await change.Service.BuscarPropiasAsync(1,new(),Ct);
+        Check(listing.Reservas.Any(a=>a.Subtotal==200 && a.PorcentajeIva==15 && a.MontoIva==30),"listado propio incluye desglose persistido");
+
+        var old=new EstadoReservasPrueba();var oldHold=await old.Service.CrearAsync(1,old.Request(1),Ct);
+        old.Reservas[0].Subtotal=null;old.Reservas[0].PorcentajeIva=null;old.Reservas[0].MontoIva=null;old.Options.Value.PorcentajeIva=15;
+        old.Asientos[1].Precio=200;
+        var oldChanged=await old.Service.CambiarAsientosAsync(1,1,new(){RowVersion=oldHold.RowVersion,TotalEsperado=200,
+            Cambios=[new(){DetalleId=oldHold.Detalles[0].DetalleId,AsientoVueloId=2,RowVersionAsiento=old.VersionAsiento(2)}]},Ct);
+        Check(oldChanged.MontoTotal==200 && oldChanged.Subtotal==null && oldChanged.PorcentajeIva==null && oldChanged.MontoIva==null,"reserva histórica sin desglose mantiene cálculo anterior al cambiar asiento");
+        var oldOrder=await new PayPalFixture(old).Service.CrearAsync(1,1,new(){RowVersion=oldChanged.RowVersion},Ct);
+        Check(oldOrder.Monto==200 && oldOrder.PorcentajeIva==null,"orden de reserva histórica no suma IVA retroactivamente");
+        var invalid=new Reserva{MontoTotal=115,Subtotal=100,PorcentajeIva=15,MontoIva=15};
+        Check(ImportesReserva.EsConsistente(invalid,100),"desglose congelado consistente");
+        invalid.MontoIva=0;Check(!ImportesReserva.EsConsistente(invalid,100),"IVA manipulado invalida pago");
+        invalid.MontoIva=null;Check(!ImportesReserva.EsConsistente(invalid,100),"desglose parcialmente NULL invalida pago");
+        var corrupt=new EstadoReservasPrueba();corrupt.Options.Value.PorcentajeIva=15;
+        var corruptHold=await corrupt.Service.CrearAsync(1,corrupt.Request(1) with {TotalEsperado=115},Ct);corrupt.Reservas[0].MontoIva=0;
+        await Error(()=>new PayPalFixture(corrupt).Service.CrearAsync(1,1,new(){RowVersion=corruptHold.RowVersion},Ct),"reserva_no_comprable");
+
+        var rollback=new EstadoReservasPrueba();rollback.Options.Value.PorcentajeIva=15;
+        var initial=await rollback.Service.CrearAsync(1,rollback.Request(1) with {TotalEsperado=115},Ct);
+        rollback.Asientos[1].Precio=200;rollback.AfterSave=()=>rollback.Clock.Advance(TimeSpan.FromHours(12));
+        await Error(()=>rollback.Service.CambiarAsientosAsync(1,1,new(){RowVersion=initial.RowVersion,TotalEsperado=230,
+            Cambios=[new(){DetalleId=initial.Detalles[0].DetalleId,AsientoVueloId=2,RowVersionAsiento=rollback.VersionAsiento(2)}]},Ct),"reserva_expirada");
+        Check(rollback.Reservas[0] is {Subtotal:100,PorcentajeIva:15,MontoIva:15,MontoTotal:115},"rollback de cambio conserva el desglose completo anterior");
+
+        var mismatch=new EstadoReservasPrueba();mismatch.Options.Value.PorcentajeIva=15;
+        var mismatchHold=await mismatch.Service.CrearAsync(1,mismatch.Request(1) with {TotalEsperado=115},Ct);
+        var mismatchPayPal=new PayPalFixture(mismatch);await mismatchPayPal.Service.CrearAsync(1,1,new(){RowVersion=mismatchHold.RowVersion},Ct);
+        mismatchPayPal.Provider.DuranteCaptura=()=>{mismatch.Detalles[0].PrecioCongelado=200;ImportesReserva.Calcular(200,15).Aplicar(mismatch.Reservas[0]);};
+        var reviewed=await mismatchPayPal.Service.CapturarAsync(1,1,Ct);
+        Check(reviewed.Estado=="revision" && reviewed.EstadoReserva=="pendiente_pago" && reviewed.Monto==115,"captura de un importe distinto de reserva no acredita compra y requiere revisión");
+
+        await HttpChecks();
+        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        Check(!db.Database.HasPendingModelChanges(),"snapshot de IVA actualizado");
+        var migrations=db.GetService<IMigrationsAssembly>();var entry=migrations.Migrations.Single(m=>m.Key.EndsWith("_DesgloseIvaReservas"));var migration=migrations.CreateMigration(entry.Value,db.Database.ProviderName!);
+        Check(migration.UpOperations.OfType<AddColumnOperation>().Count()==3 && migration.UpOperations.OfType<AddColumnOperation>().All(c=>c.IsNullable && c.DefaultValue==null),"tres columnas nullable sin reinterpretar reservas anteriores");
+        Check(migration.UpOperations.OfType<AddCheckConstraintOperation>().Count()==1 && !migration.UpOperations.Any(o=>o is UpdateDataOperation or DeleteDataOperation or DropColumnOperation or AlterColumnOperation),"CHECK de suma/IVA sin cambios en importes históricos");
+        Check(migration.DownOperations.First() is SqlOperation guard && guard.Sql.Contains("THROW"),"Down protege desglose de importes existente");
+        var sql=db.GetService<IMigrator>().GenerateScript("AvionesDatosCompletos","DesgloseIvaReservas");
+        Check(sql.Contains("[porcentaje_iva] decimal(5,2) NULL") && sql.Contains("CK_reservas_desglose_iva") && !sql.Contains("DROP TABLE"),"SQL de ampliación generado sin ejecutarlo");
+        Check(db.Database.GetDbConnection().State==System.Data.ConnectionState.Closed,"sin conexión a SQL Server");
+        Console.WriteLine($"OK: {count} comprobaciones de IVA y total PayPal; sin cobros ni SQL Server.");
+    }
+
+    private static async Task HttpChecks()
+    {
+        var f=new EstadoReservasPrueba();f.Options.Value.PorcentajeIva=15;
+        var b=WebApplication.CreateBuilder();b.Logging.ClearProviders();b.WebHost.UseUrls("http://127.0.0.1:0");
+        b.Services.AddSingleton<IReservaService>(f.Service);b.Services.AddControllers().AddApplicationPart(typeof(ReservasController).Assembly);
+        b.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions,RoleAuth>("test",_=>{});b.Services.AddAuthorization(PoliticasAcceso.Configurar);
+        b.Services.AddProblemDetails();b.Services.AddExceptionHandler<ApiExceptionHandler>();
+        await using var app=b.Build();app.UseExceptionHandler();app.UseAuthentication();app.UseAuthorization();app.MapControllers();await app.StartAsync();
+        using var http=new HttpClient(){BaseAddress=new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
+        http.DefaultRequestHeaders.Add("Authorization","Bearer cliente");
+        var payload=System.Text.Json.JsonSerializer.SerializeToNode(f.Request(1) with {TotalEsperado=115},new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+        payload["subtotal"]=0;payload["porcentajeIva"]=0;payload["montoIva"]=0;
+        var response=await http.PostAsJsonAsync("/api/reservas",payload);var body=await response.Content.ReadFromJsonAsync<ReservaResponse>();
+        Check(response.StatusCode==HttpStatusCode.Created && body is {Subtotal:100,PorcentajeIva:15,MontoIva:15,MontoTotal:115},"HTTP ignora impuestos enviados por cliente y devuelve desglose del servidor");
+        var detail=await http.GetFromJsonAsync<ReservaResponse>("/api/reservas/1");
+        Check(detail is {Subtotal:100,MontoIva:15,MontoTotal:115},"GET propio devuelve desglose");
+        await app.StopAsync();
+    }
+}

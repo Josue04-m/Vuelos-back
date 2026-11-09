@@ -1,0 +1,53 @@
+@baseUrl = https://localhost:7273
+@token = PEGAR_TOKEN_DEL_LOGIN
+
+### Registrar cliente: 201. Repetir: 409.
+POST {{baseUrl}}/api/usuarios/registro
+Content-Type: application/json
+
+{
+  "nombre": "Sofia",
+  "apellido": "Torres",
+  "email": "sofia@example.test",
+  "password": "Ejemplo-Cliente-2026!"
+}
+
+### Validación de entrada: 400
+POST {{baseUrl}}/api/usuarios/registro
+Content-Type: application/json
+
+{
+  "nombre": "",
+  "apellido": "Torres",
+  "email": "correo-invalido",
+  "password": "corta"
+}
+
+### Login: 200. Copiar token en la variable superior o en Authorize de Swagger.
+POST {{baseUrl}}/api/autenticacion/login
+Content-Type: application/json
+
+{
+  "email": "SOFIA@example.test",
+  "password": "Ejemplo-Cliente-2026!"
+}
+
+### Credenciales incorrectas: 401
+POST {{baseUrl}}/api/autenticacion/login
+Content-Type: application/json
+
+{
+  "email": "sofia@example.test",
+  "password": "Credencial-Incorrecta!"
+}
+
+### Logout: 204. Reutilizar este token después: 401.
+POST {{baseUrl}}/api/autenticacion/logout
+Authorization: Bearer {{token}}
+
+### Sesión ausente: 401
+POST {{baseUrl}}/api/autenticacion/logout
+
+### Token inválido: 401
+POST {{baseUrl}}/api/autenticacion/logout
+Authorization: Bearer invalido

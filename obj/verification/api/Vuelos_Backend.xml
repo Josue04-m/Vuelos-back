@@ -1,0 +1,189 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Vuelos_Backend</name>
+    </assembly>
+    <members>
+        <member name="M:Vuelos_Backend.Controllers.Reservas.ReservasController.Crear(Vuelos_Backend.Models.Reservas.DTOs.CrearReservaRequest,System.Threading.CancellationToken)">
+            <summary>Confirma un vuelo y un asiento por pasajero, incluidos bebés, en USD.</summary>
+            <remarks>El titular puede reservar sin viajar. No enviar UsuarioId ni fecha de nacimiento. Cada asiento requiere su versión de GET /api/vuelos/{id}/asientos. Las tarifas dependen del tipo; 409 tarifa_actualizada informa montoTotalActual para una nueva confirmación.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Reservas.ReservasController.Buscar(Vuelos_Backend.Models.Reservas.DTOs.BusquedaReservasRequest,System.Threading.CancellationToken)">
+            <summary>Lista únicamente reservas propias, incluidas las canceladas.</summary>
+            <remarks>Fechas UTC de creación, ambos extremos incluidos; orden de creación descendente y luego identificador. Página desde 1; tamaño máximo 100.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Reservas.ReservasController.Obtener(System.Int32,System.Threading.CancellationToken)">
+            <summary>Consulta detalles activos y liberados, historial y versión de una reserva propia.</summary>
+            <remarks>Una reserva ajena devuelve el mismo 404 que una inexistente.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Reservas.ReservasController.CambiarAsientos(System.Int32,Vuelos_Backend.Models.Reservas.DTOs.CambiarAsientosRequest,System.Threading.CancellationToken)">
+            <summary>Cambia asientos atómicamente conservando los datos y el tipo del pasajero.</summary>
+            <remarks>Enviar la versión de la reserva y de cada asiento destino. Los pasajeros sin cambios conservan su precio congelado. Los intercambios de asientos entre pasajeros de la misma reserva se procesan en la misma transacción.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Reservas.ReservasController.Cancelar(System.Int32,Vuelos_Backend.Models.Reservas.DTOs.CancelarReservaRequest,System.Threading.CancellationToken)">
+            <summary>Cancela la reserva, libera asientos y conserva el importe y el historial.</summary>
+            <remarks>Repetir con la versión actual no duplica eventos; una versión antigua responde 409. No requiere tarifas configuradas.</remarks>
+        </member>
+        <member name="T:Vuelos_Backend.Data.Migrations.InicialPacificNexus">
+            <inheritdoc />
+        </member>
+        <member name="M:Vuelos_Backend.Data.Migrations.InicialPacificNexus.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Vuelos_Backend.Data.Migrations.InicialPacificNexus.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Vuelos_Backend.Data.Migrations.InicialPacificNexus.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:Vuelos_Backend.Data.Migrations.TiposPasajeroReservas">
+            <inheritdoc />
+        </member>
+        <member name="M:Vuelos_Backend.Data.Migrations.TiposPasajeroReservas.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Vuelos_Backend.Data.Migrations.TiposPasajeroReservas.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Vuelos_Backend.Data.Migrations.TiposPasajeroReservas.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:Vuelos_Backend.Models.Asientos.DTOs.CategoriaAsientoResponse">
+            <summary>Categoría del asiento físico.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Asientos.DTOs.CategoriaAsientoResponse.#ctor(System.Int32,System.String,System.String)">
+            <summary>Categoría del asiento físico.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Asientos.DTOs.AsientoVueloResponse">
+            <summary>Asiento por vuelo. RowVersion es Base64; Disponible también considera el estado y la salida del vuelo.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Asientos.DTOs.AsientoVueloResponse.#ctor(System.Int32,System.String,Vuelos_Backend.Models.Asientos.DTOs.CategoriaAsientoResponse,System.Decimal,System.String,System.String,System.Boolean,System.String)">
+            <summary>Asiento por vuelo. RowVersion es Base64; Disponible también considera el estado y la salida del vuelo.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Asientos.DTOs.AsientosVueloResponse">
+            <summary>Disponibilidad informativa y tarifas actuales en dólares estadounidenses.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Asientos.DTOs.AsientosVueloResponse.#ctor(System.Int32,System.String,System.String,System.Boolean,System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Asientos.DTOs.AsientoVueloResponse})">
+            <summary>Disponibilidad informativa y tarifas actuales en dólares estadounidenses.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Autenticacion.DTOs.LoginRequest">
+            <summary>Credenciales para iniciar una sesión.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Autenticacion.DTOs.LoginResponse">
+            <summary>Token de la nueva sesión y su expiración UTC; solo se devuelve en login.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Autenticacion.DTOs.LoginResponse.#ctor(System.String,System.String,System.DateTimeOffset,Vuelos_Backend.Models.Usuarios.DTOs.UsuarioResponse)">
+            <summary>Token de la nueva sesión y su expiración UTC; solo se devuelve en login.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.BusquedaReservasRequest">
+            <summary>Filtros de reservas propias por estado y fecha de creación UTC.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.CambioAsientoRequest">
+            <summary>Nuevo asiento para un detalle activo; el pasajero y su tipo se conservan.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.CambiarAsientosRequest">
+            <summary>Cambios de asiento atómicos. Los detalles no incluidos conservan su tarifa congelada.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.CancelarReservaRequest">
+            <summary>Versión de la reserva que se desea cancelar.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.PasajeroReservaRequest">
+            <summary>Pasajero con asiento propio, incluidos bebés. No se solicita fecha de nacimiento.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.CrearReservaRequest">
+            <summary>Reserva de un vuelo, realizada por el usuario de la sesión, viaje o no ese usuario.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.DetalleReservaResponse">
+            <summary>Asignación activa o liberada de un pasajero; los importes son los congelados.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.DTOs.DetalleReservaResponse.#ctor(System.Int32,System.Int32,System.String,System.String,System.String,System.String,System.String,System.Decimal,System.String,System.String)">
+            <summary>Asignación activa o liberada de un pasajero; los importes son los congelados.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.HistorialReservaResponse">
+            <summary>Evento de cambio de asiento o cancelación; no se elimina el historial.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.DTOs.HistorialReservaResponse.#ctor(System.Int32,System.String,System.DateTimeOffset,System.Nullable{System.Int32},System.Nullable{System.Int32},System.String)">
+            <summary>Evento de cambio de asiento o cancelación; no se elimina el historial.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.ReservaResponse">
+            <summary>Reserva propia con detalles, historial, total USD y versión actual.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.DTOs.ReservaResponse.#ctor(System.Int32,System.String,System.Int32,System.String,System.DateTimeOffset,System.Decimal,System.String,System.String,System.String,System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Reservas.DTOs.DetalleReservaResponse},System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Reservas.DTOs.HistorialReservaResponse})">
+            <summary>Reserva propia con detalles, historial, total USD y versión actual.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.ReservaResumenResponse">
+            <summary>Resumen de una reserva propia, sin datos de pasajeros.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.DTOs.ReservaResumenResponse.#ctor(System.Int32,System.String,System.Int32,System.String,System.DateTimeOffset,System.Decimal,System.String,System.String,System.String)">
+            <summary>Resumen de una reserva propia, sin datos de pasajeros.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.PaginaReservasResponse">
+            <summary>Página de reservas del usuario autenticado.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.DTOs.PaginaReservasResponse.#ctor(System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Reservas.DTOs.ReservaResumenResponse},System.Int32,System.Int32,System.Int32,System.Int32)">
+            <summary>Página de reservas del usuario autenticado.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Usuarios.DTOs.RegistroUsuarioRequest">
+            <summary>Datos para registrar un cliente. El rol lo asigna el servidor.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Usuarios.DTOs.UsuarioResponse">
+            <summary>Información pública del cliente registrado.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Usuarios.DTOs.UsuarioResponse.#ctor(System.Int32,System.String,System.String,System.String)">
+            <summary>Información pública del cliente registrado.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest">
+            <summary>Filtros opcionales de salida UTC. Usar fecha o un rango completo, sin combinarlos.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.Origen">
+            <summary>Código IATA de origen, por ejemplo GYE; no distingue mayúsculas.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.Destino">
+            <summary>Código IATA de destino, por ejemplo UIO.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.Fecha">
+            <summary>Día UTC de salida, formato YYYY-MM-DD.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.FechaDesde">
+            <summary>Primer día UTC del rango, incluido.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.FechaHasta">
+            <summary>Último día UTC del rango, incluido.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.Pagina">
+            <summary>Página desde 1, ordenada por salida e identificador.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.TamanoPagina">
+            <summary>Elementos por página: entre 1 y 100, por defecto 20.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoVueloResponse">
+            <summary>Aeropuerto de la ruta consultada.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoVueloResponse.#ctor(System.Int32,System.String,System.String,System.String,System.String)">
+            <summary>Aeropuerto de la ruta consultada.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.AvionVueloResponse">
+            <summary>Datos del avión necesarios para consultar el vuelo.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.AvionVueloResponse.#ctor(System.Int32,System.String,System.Int32)">
+            <summary>Datos del avión necesarios para consultar el vuelo.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.VueloResponse">
+            <summary>Detalle público de un vuelo, con horarios y fechas en UTC.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.VueloResponse.#ctor(System.Int32,System.String,Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoVueloResponse,Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoVueloResponse,Vuelos_Backend.Models.Vuelos.DTOs.AvionVueloResponse,System.DateTimeOffset,System.DateTimeOffset,System.Nullable{System.DateTimeOffset},System.Nullable{System.DateTimeOffset},System.String,System.Boolean)">
+            <summary>Detalle público de un vuelo, con horarios y fechas en UTC.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.PaginaVuelosResponse">
+            <summary>Página de vuelos. Una búsqueda sin resultados devuelve vuelos vacío.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.PaginaVuelosResponse.#ctor(System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Vuelos.DTOs.VueloResponse},System.Int32,System.Int32,System.Int32,System.Int32)">
+            <summary>Página de vuelos. Una búsqueda sin resultados devuelve vuelos vacío.</summary>
+        </member>
+        <member name="T:Program">
+            <summary>
+            Auto-generated public partial Program class for top-level statement apps.
+            </summary>
+        </member>
+    </members>
+</doc>

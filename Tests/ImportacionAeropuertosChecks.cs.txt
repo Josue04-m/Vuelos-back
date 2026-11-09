@@ -1,0 +1,190 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Authentication;
+using Vuelos_Backend.Controllers.Administracion;
+using Vuelos_Backend.Interface.Catalogos;
+using Vuelos_Backend.Middleware;
+using Vuelos_Backend.Models.Aeropuertos;
+using Vuelos_Backend.Models.Catalogos;
+using Vuelos_Backend.Models.Catalogos.DTOs;
+using Vuelos_Backend.Services.Catalogos;
+using Vuelos_Backend.Repositories.Catalogos;
+using Vuelos_Backend.Swagger;
+
+internal static class ImportacionAeropuertosChecks
+{
+    private const string Header="type,name,municipality,iso_country,iata_code,scheduled_service\n";
+    private const string Row="large_airport,Aeropuerto de prueba,Quito,EC,UIO,yes\n";
+    private static readonly CancellationToken Ct=CancellationToken.None;
+    private static int count;
+    private static void Check(bool ok,string label){if(!ok)throw new Exception(label);count++;}
+    private static ImportarAeropuertosRequest Request(string text,string filename="airports.csv")=>Request(Encoding.UTF8.GetBytes(text),filename);
+    private static ImportarAeropuertosRequest Request(byte[] bytes,string filename)=>new(){Archivo=new FormFile(new MemoryStream(bytes),0,bytes.Length,"archivo",filename)};
+    private static async Task Error(Func<Task> action,string codigo)
+    {try{await action();throw new Exception("Falta rechazo: "+codigo);}catch(CatalogoOperacionException e){Check(e.Codigo==codigo,codigo);}}
+    public static async Task RunAsync()
+    {
+        var repo=new MemoryCatalogosRepository();var service=new ImportacionAeropuertosService(repo);
+        var csv=Header+Row+Row.Replace("UIO","GYE").Replace("Quito","Guayaquil");
+        var preview=await service.ValidarAsync(Request(csv) with {TamanoPagina=1,Pagina=2},Ct);
+        Check(preview.PuedeImportar && preview.TotalRegistros==2 && preview.TotalImportables==2 && preview.Filas.Single().CodigoIata=="GYE" && repo.Created==0,"vista previa paginada sin escritura");
+        var imported=await service.ImportarAsync(Request(csv) with {TamanoPagina=1,Pagina=2},Ct);
+        Check(imported.AeropuertosImportados==2 && imported.Filas.Count==1 && imported.Filas[0].AeropuertoId>0 && (await repo.BuscarAsync<Aeropuerto>(new(),Ct)).Total==2,"confirmación importa selección completa, no solo página");
+        var before=repo.Created;
+        var repeated=await service.ImportarAsync(Request(csv),Ct);
+        Check(repeated.Estado=="ya_importados" && repeated.Mensaje.Contains("ya se importaron") && repeated.AeropuertosImportados==0 && repo.Created==before,"repetición informa sin duplicar");
+        Check((await service.ValidarAsync(Request(Header+Row.Replace("UIO"," uio ")),Ct)).Estado=="ya_importados","IATA normalizado");
+        var mixed=await service.ImportarAsync(Request(csv+Row.Replace("UIO","CUE")),Ct);
+        Check(mixed.Estado=="conflicto_codigos" && mixed.TotalExistentes==2 && mixed.AeropuertosImportados==0 && repo.Created==before,"parcialmente existentes bloquean toda escritura");
+        var old=(await repo.ObtenerAsync<Aeropuerto>(1,Ct))!;old.Activo=false;await repo.ActualizarAsync(old,Ct);
+        Check((await service.ValidarAsync(Request(Header+Row),Ct)).Estado=="ya_importados","IATA de inactivo no se reutiliza");
+
+        var clean=new MemoryCatalogosRepository();var parser=new ImportacionAeropuertosService(clean);
+        var filters=Header+Row+Row.Replace("large_airport","heliport")+Row.Replace("yes","no")+Row.Replace("UIO","")+Row.Replace("EC","US").Replace("UIO","JFK");
+        var filtered=await parser.ValidarAsync(Request(filters) with {PaisIso="ec"},Ct);
+        Check(filtered.PuedeImportar && filtered.TotalImportables==1 && filtered.TotalOmitidos==4 && filtered.ResumenOmisiones.Count==4,"filtros explícitos por tipo, servicio, país y sin IATA");
+        Check((await parser.ValidarAsync(Request(Header+Row.Replace("yes","no")) with {SoloServicioRegular=false},Ct)).PuedeImportar,"servicio no regular requiere selección explícita");
+        var incomplete=Header+Row+Row.Replace("Quito","").Replace("UIO","XXX");
+        var blocked=await parser.ValidarAsync(Request(incomplete),Ct);
+        Check(!blocked.PuedeImportar && blocked.TotalErrores==1 && blocked.Errores[0].Campo=="municipality" && blocked.TotalOmitidos==0,"ciudad vacía bloquea por defecto sin inventarla");
+        var skipped=await parser.ImportarAsync(Request(incomplete) with {OmitirIncompletos=true},Ct);
+        Check(skipped.AeropuertosImportados==1 && skipped.TotalOmitidos==1 && skipped.ResumenOmisiones["datos_incompletos_o_invalidos"]==1,"incompletos solo omitidos con autorización explícita");
+        foreach(var text in new[]{Header+Row+Row,Header+Row.Replace("UIO","12A"),Header+Row.Replace("EC","Ecuador"),Header+Row.Replace("Aeropuerto de prueba",new string('a',151)),Header+Row.Replace("Quito",new string('a',101)),Header+"faltan,columnas\n",Header})
+        {
+            var invalid=await parser.ImportarAsync(Request(text),Ct);
+            Check(invalid.Estado=="errores_validacion" && invalid.AeropuertosImportados==0,"datos inválidos no importan");
+        }
+        var quote=await parser.ValidarAsync(Request("\uFEFF"+Header+Row.Replace("UIO","CUE").Replace("Aeropuerto de prueba","\"Aeropuerto, \"\"demo\"\"\"")),Ct);
+        Check(quote.PuedeImportar && quote.Filas[0].Nombre=="Aeropuerto, \"demo\"","UTF-8 BOM y comillas/comas internas");
+        await Error(()=>parser.ValidarAsync(Request(csv,"airports.xlsx"),Ct),"archivo_aeropuertos_invalido");
+        await Error(()=>parser.ValidarAsync(Request(new byte[]{0xFF},"airports.csv"),Ct),"archivo_aeropuertos_invalido");
+        await Error(()=>parser.ValidarAsync(Request(new byte[ImportacionAeropuertosService.MaxBytes+1],"airports.csv"),Ct),"archivo_aeropuertos_invalido");
+        await Error(()=>parser.ValidarAsync(Request(Header.Replace(",",";")+Row),Ct),"archivo_aeropuertos_invalido");
+        await Error(()=>parser.ValidarAsync(Request(Header.Replace("type,","name,")+Row),Ct),"archivo_aeropuertos_invalido");
+        await Error(()=>parser.ValidarAsync(Request(Header+"\"comillas sin cerrar"),Ct),"archivo_aeropuertos_invalido");
+        await Error(()=>parser.ValidarAsync(Request(csv) with {PaisIso="Ecuador"},Ct),"archivo_aeropuertos_invalido");
+        await Error(()=>parser.ValidarAsync(Request(csv) with {TamanoPagina=201},Ct),"archivo_aeropuertos_invalido");
+        var errors=await parser.ValidarAsync(Request(Header+string.Concat(Enumerable.Repeat(Row.Replace("Quito",""),250))),Ct);
+        Check(errors.TotalErrores>200 && errors.Errores.Count==200 && errors.ErroresTruncados,"respuesta de errores acotada con conteo total");
+        var fail=new MemoryCatalogosRepository(){FallarAeropuertosDespues=2};
+        await Error(()=>new ImportacionAeropuertosService(fail).ImportarAsync(Request(csv),Ct),"fallo_aeropuertos");
+        Check((await fail.BuscarAsync<Aeropuerto>(new(),Ct)).Total==0,"fallo parcial revierte todos los aeropuertos");
+        var concurrent=new MemoryCatalogosRepository();var cs=new ImportacionAeropuertosService(concurrent);
+        var attempts=await Task.WhenAll(cs.ImportarAsync(Request(csv),Ct),cs.ImportarAsync(Request(csv),Ct));
+        Check(attempts.Count(r=>r.Estado=="importado")==1 && attempts.Count(r=>r.Estado=="ya_importados")==1 && (await concurrent.BuscarAsync<Aeropuerto>(new(),Ct)).Total==2,"importaciones serializadas no duplican");
+        var race=new MemoryCatalogosRepository();var rs=new ImportacionAeropuertosService(race);
+        Check((await rs.ValidarAsync(Request(Header+Row),Ct)).PuedeImportar,"prevalidación antes de cambio");
+        await new CatalogosAdminService(race,TimeProvider.System).GuardarAeropuertoAsync(null,new(){CodigoIata="UIO",Nombre="Existente",Ciudad="Quito",Pais="Ecuador"},Ct);
+        Check((await rs.ImportarAsync(Request(Header+Row),Ct)).Estado=="ya_importados","confirmación revalida códigos después de vista previa");
+        await using var file=new FileStream("docs/airports.csv",FileMode.Open,FileAccess.Read,FileShare.ReadWrite);
+        using var copy=new MemoryStream();await file.CopyToAsync(copy);var bytes=copy.ToArray();
+        var actual=new ImportacionAeropuertosService(new MemoryCatalogosRepository());
+        var actualBlocked=await actual.ValidarAsync(Request(bytes,"airports.csv"),Ct);
+        var actualReady=await actual.ValidarAsync(Request(bytes,"airports.csv") with {OmitirIncompletos=true},Ct);
+        Check(actualBlocked.TotalRegistros>80000 && actualBlocked.TotalErrores>0 && !actualBlocked.PuedeImportar,"archivo real requiere revisar ciudades faltantes");
+        Check(actualReady.PuedeImportar && actualReady.TotalImportables>3000 && actualReady.Filas.Count==100 && actualReady.TotalOmitidos>0,"archivo real procesado y paginado sin importación SQL");
+        Console.WriteLine($"Archivo airports: {actualReady.TotalRegistros} registros; {actualReady.TotalImportables} importables; {actualReady.TotalOmitidos} omitidos con autorización; {actualBlocked.TotalErrores} errores por defecto.");
+        await HttpChecks();
+        await MetadatosChecks();
+        var roundtrip=typeof(CatalogosAdminRepository).GetMethod("ExigirDatosAeropuertosConservados",BindingFlags.Static|BindingFlags.NonPublic)!;
+        var expected=new[]{new Aeropuerto {AeropuertoId=1,CodigoIata="ABC",Nombre="Aeropuerto Ā",Ciudad="Ciudad",Pais="EC"}};
+        roundtrip.Invoke(null,new object[]{expected,expected});Check(true,"lectura exacta conserva Unicode cuando la base lo admite");
+        try {roundtrip.Invoke(null,new object[]{expected,new[]{new Aeropuerto {AeropuertoId=1,CodigoIata="ABC",Nombre="Aeropuerto ?",Ciudad="Ciudad",Pais="EC"}}});throw new Exception("No detectó pérdida de caracteres");}
+        catch(TargetInvocationException e){Check(e.InnerException is CatalogoOperacionException {Codigo:"codificacion_aeropuerto_incompatible"},"pérdida de caracteres bloquea commit");}
+        Console.WriteLine($"OK: {count} comprobaciones de importación de aeropuertos; sin SQL Server.");
+    }
+
+    private static async Task MetadatosChecks()
+    {
+        const string header="id,ident,type,name,latitude_deg,longitude_deg,elevation_ft,continent,iso_country,iso_region,municipality,scheduled_service,icao_code,iata_code,gps_code,local_code,home_link,wikipedia_link,keywords\n";
+        const string row="42,SEQM,large_airport,Aeropuerto Ā Quito,-0.1291667,-78.3575,7910,SA,EC,EC-P,Quito,yes,SEQM,UIO,SEQM,UIO,https://example.test,https://example.test/wiki,\" costa, prueba \"\n";
+        var repo=new MemoryCatalogosRepository();var service=new ImportacionAeropuertosService(repo);
+        var preview=await service.ValidarAsync(Request(header+row),Ct);var m=preview.Filas.Single().Metadatos!;
+        Check(preview.PuedeImportar && m.IdOrigen==42 && m.Identificador=="SEQM" && m.Tipo=="large_airport","ID e identificación de origen en vista previa");
+        Check(m.Latitud==-0.1291667 && m.Longitud==-78.3575 && m.ElevacionPies==7910,"coordenadas y elevación numéricas");
+        Check(m.Continente=="SA" && m.RegionIso=="EC-P" && m.ServicioRegular==true && m.CodigoIcao=="SEQM" && m.CodigoGps=="SEQM" && m.CodigoLocal=="UIO","región y códigos completos");
+        Check(m.SitioWeb=="https://example.test" && m.Wikipedia=="https://example.test/wiki" && m.PalabrasClave=="costa, prueba","enlaces y palabras clave sin truncar");
+        using(var original=JsonDocument.Parse(m.DatosOrigenJson!))
+        {
+            Check(original.RootElement.EnumerateObject().Count()==19 && original.RootElement.GetProperty("keywords").GetString()==" costa, prueba " && original.RootElement.GetProperty("latitude_deg").GetString()=="-0.1291667","JSON conserva los 19 valores originales y precisión textual");
+        }
+        await service.ImportarAsync(Request(header+row),Ct);
+        var stored=(await repo.ObtenerAsync<Aeropuerto>(1,Ct))!;
+        Check(stored.AeropuertoId==1 && stored.IdOrigen==42 && stored.Latitud==m.Latitud && stored.Nombre=="Aeropuerto Ā Quito" && stored.DatosOrigenJson==m.DatosOrigenJson,"persistencia recibe campos completos y Unicode, conserva PK interna");
+        var response=await new CatalogosAdminService(repo,TimeProvider.System).ObtenerAeropuertoAsync(1,Ct);
+        Check(response.Metadatos==m,"GET administrativo devuelve todos los metadatos persistidos");
+        var future=await new ImportacionAeropuertosService(new MemoryCatalogosRepository()).ValidarAsync(Request(header.TrimEnd('\n')+",columna_futura\n"+row.TrimEnd('\n')+",dato extra\n"),Ct);
+        using(var raw=JsonDocument.Parse(future.Filas.Single().Metadatos!.DatosOrigenJson!))Check(raw.RootElement.GetProperty("columna_futura").GetString()=="dato extra","columnas adicionales también conservadas en JSON");
+        foreach(var invalid in new[]{row.Replace("-0.1291667","91"),row.Replace("-78.3575","-181"),row.Replace("7910","NaN"),row.Replace("42,SEQM","-1,SEQM"),row.Replace("yes","desconocido")})
+        {
+            var rejected=await service.ValidarAsync(Request(header+invalid) with {SoloServicioRegular=false},Ct);
+            Check(rejected.Estado=="errores_validacion" && rejected.TotalErrores>0,"metadatos numéricos y servicio inválidos bloquean carga");
+        }
+        var nullable=await new ImportacionAeropuertosService(new MemoryCatalogosRepository()).ValidarAsync(Request(header+row.Replace("-0.1291667","").Replace("-78.3575","").Replace("7910","")),Ct);
+        Check(nullable.PuedeImportar && nullable.Filas[0].Metadatos is {Latitud:null,Longitud:null,ElevacionPies:null},"ausencia de coordenadas no se convierte a cero");
+        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        Check(!db.Database.HasPendingModelChanges(),"snapshot de metadatos actualizado");
+        var migrations=db.GetService<IMigrationsAssembly>();var entry=migrations.Migrations.Single(p=>p.Key.EndsWith("_AeropuertosDatosCompletos"));var migration=migrations.CreateMigration(entry.Value,db.Database.ProviderName!);
+        Check(migration.UpOperations.OfType<AddColumnOperation>().Count()==16 && migration.UpOperations.OfType<AddColumnOperation>().All(c=>c.IsNullable),"16 columnas opcionales conservan registros anteriores");
+        Check(migration.UpOperations.OfType<AlterColumnOperation>().Count()==3 && migration.UpOperations.OfType<AlterColumnOperation>().All(c=>c.ColumnType?.StartsWith("nvarchar")==true),"nombres, ciudades y países ampliados a Unicode");
+        Check(migration.UpOperations.OfType<AddCheckConstraintOperation>().Count()==3 && !migration.UpOperations.Any(o=>o is DropTableOperation or DropColumnOperation or UpdateDataOperation or DeleteDataOperation),"coordenadas/JSON restringidos y sin borrado ni conversión de datos de negocio");
+        Check(migration.DownOperations.First() is SqlOperation guard && guard.Sql.Contains("THROW") && guard.Sql.Contains("datos_origen_json"),"Down bloquea pérdida de metadatos y Unicode");
+        var sql=db.GetService<IMigrator>().GenerateScript("PagosPayPal","AeropuertosDatosCompletos");
+        Check(sql.Contains("[latitud] float NULL") && sql.Contains("nvarchar(150)") && sql.Contains("ISJSON") && !sql.Contains("DROP TABLE"),"SQL incremental generado sin ejecutar y sin eliminar tablas");
+        Check(db.Database.GetDbConnection().State==System.Data.ConnectionState.Closed,"verificación no abre SQL Server");
+    }
+
+    private static async Task HttpChecks()
+    {
+        var service=new ImportacionAeropuertosService(new MemoryCatalogosRepository());var b=WebApplication.CreateBuilder();b.Logging.ClearProviders();b.WebHost.UseUrls("http://127.0.0.1:0");
+        b.Services.AddSingleton<IImportacionAeropuertosService>(service);b.Services.AddControllers().AddApplicationPart(typeof(ImportacionAeropuertosController).Assembly);
+        b.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions,RoleAuth>("test",_=>{});b.Services.AddAuthorization(PoliticasAcceso.Configurar);
+        b.Services.AddProblemDetails();b.Services.AddExceptionHandler<ApiExceptionHandler>();b.Services.AddEndpointsApiExplorer();b.Services.AddSwaggerGen(DocumentacionApi.Configurar);
+        await using var app=b.Build();app.UseExceptionHandler();app.UseSwagger();app.UseAuthentication();app.UseAuthorization();app.MapControllers();await app.StartAsync();
+        using var http=new HttpClient(){BaseAddress=new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
+        async Task<HttpResponseMessage> Send(string path,string csv=Header+Row,bool omit=false)
+        {
+            using var form=new MultipartFormDataContent();form.Add(new ByteArrayContent(Encoding.UTF8.GetBytes(csv)),"archivo","airports.csv");
+            form.Add(new StringContent(omit?"true":"false"),"omitirIncompletos");return await http.PostAsync(path,form);
+        }
+        const string path="/api/admin/aeropuertos/importacion";
+        foreach(var url in new[]{path,path+"/validar"})Check((await Send(url)).StatusCode==HttpStatusCode.Unauthorized,"sin token 401 "+url);
+        http.DefaultRequestHeaders.Add("Authorization","Bearer cliente");
+        foreach(var url in new[]{path,path+"/validar"})Check((await Send(url)).StatusCode==HttpStatusCode.Forbidden,"cliente 403 "+url);
+        http.DefaultRequestHeaders.Remove("Authorization");http.DefaultRequestHeaders.Add("Authorization","Bearer admin");
+        var pre=await Send(path+"/validar");Check(pre.StatusCode==HttpStatusCode.OK && (await pre.Content.ReadFromJsonAsync<ImportacionAeropuertosResponse>())!.PuedeImportar,"vista previa multipart admin");
+        Check((await Send(path,Header+Row.Replace("Quito",""))).StatusCode==HttpStatusCode.BadRequest,"incompletos HTTP 400");
+        Check((await Send(path)).StatusCode==HttpStatusCode.OK,"confirmación HTTP 200");
+        var repeat=await Send(path);Check((await repeat.Content.ReadFromJsonAsync<ImportacionAeropuertosResponse>())!.Estado=="ya_importados","repetición HTTP sin duplicar");
+        Check((await Send(path,Header+Row+Row.Replace("UIO","GYE"))).StatusCode==HttpStatusCode.Conflict,"conflicto parcial HTTP 409");
+        Check((await http.PostAsJsonAsync("/api/admin/aeropuertos",new{})).StatusCode==HttpStatusCode.MethodNotAllowed,"alta manual retirada");
+        Check((await http.PutAsJsonAsync("/api/admin/aeropuertos/1",new{})).StatusCode==HttpStatusCode.MethodNotAllowed,"edición manual retirada");
+        Check((await http.PostAsJsonAsync("/api/admin/aeropuertos/1/desactivacion",new{})).StatusCode==HttpStatusCode.NotFound,"desactivación manual retirada");
+        using var swagger=JsonDocument.Parse(await http.GetStringAsync("/swagger/v1/swagger.json"));var paths=swagger.RootElement.GetProperty("paths");
+        foreach(var url in new[]{path,path+"/validar"})Check(paths.GetProperty(url).GetProperty("post").GetProperty("requestBody").GetProperty("content").TryGetProperty("multipart/form-data",out _),"Swagger multipart "+url);
+        Check(!paths.GetProperty("/api/admin/aeropuertos").TryGetProperty("post",out _) && !paths.GetProperty("/api/admin/aeropuertos/{id}").TryGetProperty("put",out _),"Swagger solo consulta e importación");
+        await app.StopAsync();
+    }
+}

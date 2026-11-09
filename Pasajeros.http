@@ -1,0 +1,6 @@
+@baseUrl = https://localhost:7273
+@token = PEGAR_TOKEN_DEL_LOGIN
+
+### Buscar y autocompletar. Reemplazar con la cédula a consultar.
+GET {{baseUrl}}/api/pasajeros/consulta-cedula/0000000000
+Authorization: Bearer {{token}}

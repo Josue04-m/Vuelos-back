@@ -1,0 +1,49 @@
+@baseUrl = http://localhost:5161
+@token = PEGAR_TOKEN_CLIENTE
+@vueloId = 1
+@asientoVueloId = 1
+@versionAsiento = PEGAR_ROWVERSION_DEL_ASIENTO
+@totalUSD = DEFINIR_TOTAL_CALCULADO
+@reservaId = 1
+@versionReserva = PEGAR_ROWVERSION_DE_LA_RESERVA
+
+### Consultar disponibilidad; libera reservas vencidas del vuelo antes de responder
+GET {{baseUrl}}/api/vuelos/{{vueloId}}/asientos
+Authorization: Bearer {{token}}
+
+### Crear reserva temporal. Ajustar total a clase y tipo de pasajero configurados.
+POST {{baseUrl}}/api/reservas
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "vueloId": {{vueloId}},
+  "totalEsperado": {{totalUSD}},
+  "pasajeros": [{
+    "cedula": "DEMO-001",
+    "primerNombre": "Prueba",
+    "primerApellido": "Laboratorio",
+    "tipoPasajero": "adulto",
+    "asientoVueloId": {{asientoVueloId}},
+    "rowVersionAsiento": "{{versionAsiento}}"
+  }]
+}
+
+### Consultar vencimiento, estado y RowVersion vigente; copiar IDs de la respuesta de creación
+GET {{baseUrl}}/api/reservas/{{reservaId}}
+Authorization: Bearer {{token}}
+
+### Para pagar usar PayPal.http: crear orden, aprobar en navegador y capturar.
+
+### Cancelar solo una reserva pendiente distinta: tras comprar devuelve conflicto
+POST {{baseUrl}}/api/reservas/{{reservaId}}/cancelacion
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "rowVersion": "{{versionReserva}}"
+}
+
+### Consultar historial propio de reservas expiradas
+GET {{baseUrl}}/api/reservas?estado=expirada
+Authorization: Bearer {{token}}

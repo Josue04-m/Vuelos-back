@@ -1,0 +1,21 @@
+# Instrucciones para Codex
+
+Este repositorio corresponde a la API de Pacific Nexus Airways,
+un sistema de reservas de vuelos desarrollado con ASP.NET Core
+y SQL Server, que será consumido por una aplicación Flutter.
+
+Antes de comenzar cualquier tarea:
+1. Lee PROYECTO_API.md.
+2. Revisa el código existente y el script SQL del proyecto.
+3. Respeta la estructura y las decisiones definidas en el documento.
+
+Reglas obligatorias:
+- Trabajar únicamente en la API.
+- No instalar, restaurar ni actualizar dependencias automáticamente.
+- No elegir versiones de paquetes; las decide el equipo.
+- No ejecutar migraciones ni scripts SQL automáticamente.
+- Crear los modelos respetando el esquema SQL existente.
+- Mantener borrados lógicos y controles de concurrencia.
+- No guardar credenciales reales en el repositorio.
+- Al terminar, explicar los cambios, las comprobaciones realizadas,
+  los pendientes y las dependencias que debemos instalar manualmente.

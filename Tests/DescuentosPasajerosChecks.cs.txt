@@ -1,0 +1,42 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
+using Vuelos_Backend.Models.Reservas;
+using Vuelos_Backend.Services.Reservas;
+
+internal static class DescuentosPasajerosChecks
+{
+    public static async Task RunAsync()
+    {
+        var count = 0;
+        void Check(bool ok, string name) { if (!ok) throw new Exception(name); count++; }
+        var config = new ConfigurationBuilder().SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("appsettings.json").AddJsonFile("appsettings.Development.json", optional: true).Build();
+        var options = new OpcionesTarifasPasajero();
+        config.GetSection(OpcionesTarifasPasajero.Seccion).Bind(options);
+        var calculator = new CalculadoraTarifas(Options.Create(options));
+        calculator.ValidarConfiguracion();
+        var cases = new[] { ("adulto", 100m, 150m, 70m), ("joven", 100m, 150m, 70m), ("nino", 80m, 120m, 56m), ("bebe", 75m, 112.50m, 52.50m) };
+        foreach (var (tipo, esperado100, esperado150, esperado70) in cases)
+        {
+            Check(calculator.Calcular(100m, tipo) == esperado100, "precio 100 para " + tipo);
+            Check(calculator.Calcular(150m, tipo) == esperado150, "precio 150 para " + tipo);
+            Check(calculator.Calcular(70m, tipo) == esperado70, "precio 70 para " + tipo);
+            var f = new EstadoReservasPrueba(); f.Options.Value.PorcentajeIva = new OpcionesReservas().PorcentajeIva;
+            var iva = decimal.Round(esperado100 * 0.15m, 2, MidpointRounding.AwayFromZero); var total = esperado100 + iva;
+            var service = new ReservaService(f.Repository, new CalculadoraTarifas(Options.Create(options)), f.Clock, f.Options, f, f.Expiry);
+            var original = f.Request(1);
+            var request = original with { TotalEsperado = total, Pasajeros = [original.Pasajeros[0] with { TipoPasajero = tipo }] };
+            var hold = await service.CrearAsync(1, request, CancellationToken.None);
+            Check(hold.Estado == "pendiente_pago" && hold.MontoTotal == total && hold.Subtotal == esperado100 && hold.MontoIva == iva && hold.Detalles.Single().PrecioCongelado == esperado100, "reserva usa calculadora real y precio congelado de " + tipo);
+            var pf = new PayPalFixture(f); var paid = await pf.Service.CrearAsync(1, hold.ReservaId, new() { RowVersion = hold.RowVersion }, CancellationToken.None);
+            Check(paid.Monto == total && paid.Subtotal == esperado100 && paid.MontoIva == iva, "comprobante conserva importe de " + tipo);
+        }
+        Check(calculator.Calcular(0.02m, "bebe") == 0.02m, "redondeo monetario de medio centavo");
+        Console.WriteLine($"OK: {count} comprobaciones de descuentos aprobados con configuración real; sin SQL Server.");
+    }
+}

@@ -1,0 +1,80 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Vuelos_Backend.Authentication;
+using Vuelos_Backend.Configuration;
+
+internal static class CorsChecks
+{
+    private static int count;
+    private static void Check(bool ok,string label){if(!ok)throw new Exception(label);count++;}
+    public static async Task RunAsync()
+    {
+        await using(var app=await App("Development"))
+        {
+            using var http=Client(app);
+            using var pre=await Preflight(http,CorsFlutter.OrigenDesarrollo);
+            Check(pre.StatusCode==HttpStatusCode.NoContent && pre.Headers.GetValues("Access-Control-Allow-Origin").Single()==CorsFlutter.OrigenDesarrollo,"preflight autorizado sin sesión y sin redirección HTTPS");
+            Check(pre.Headers.GetValues("Access-Control-Allow-Headers").Single().Contains("authorization",StringComparison.OrdinalIgnoreCase) && pre.Headers.GetValues("Access-Control-Allow-Methods").Single().Contains("POST"),"Authorization y JSON admitidos");
+            Check(!pre.Headers.Contains("Access-Control-Allow-Credentials"),"sin habilitar cookies cross-origin");
+            foreach(var origin in new[]{"http://localhost:62227","http://127.0.0.1:62226","https://malicioso.example"})
+            {
+                using var denied=await Preflight(http,origin);
+                Check(!denied.Headers.Contains("Access-Control-Allow-Origin"),"origen no autorizado "+origin);
+            }
+            http.DefaultRequestHeaders.Add("Origin",CorsFlutter.OrigenDesarrollo);
+            using var anonymous=await http.GetAsync("/api/cors-test");
+            Check(anonymous.StatusCode==HttpStatusCode.Unauthorized && anonymous.Headers.Contains("Access-Control-Allow-Origin"),"401 visible a Flutter, CORS no evita autenticación");
+            http.DefaultRequestHeaders.Add("Authorization","Bearer cliente");
+            using var client=await http.GetAsync("/api/cors-test");Check(client.StatusCode==HttpStatusCode.OK && client.Headers.Contains("Access-Control-Allow-Origin"),"GET autorizado desde Flutter web");
+            using var forbidden=await http.GetAsync("/api/cors-admin");Check(forbidden.StatusCode==HttpStatusCode.Forbidden && forbidden.Headers.Contains("Access-Control-Allow-Origin"),"403 admin no se oculta como fallo de red");
+        }
+        await using(var configured=await App("Development",new(){["Cors:OrigenesPermitidos:0"]="http://localhost:63333/"}))
+        {
+            using var http=Client(configured);using var permitted=await Preflight(http,"http://localhost:63333");using var old=await Preflight(http,CorsFlutter.OrigenDesarrollo);
+            Check(permitted.Headers.Contains("Access-Control-Allow-Origin") && !old.Headers.Contains("Access-Control-Allow-Origin"),"configuración reemplaza origen de desarrollo y normaliza barra final");
+        }
+        await using(var production=await App("Production"))
+        {
+            using var http=Client(production);using var response=await Preflight(http,CorsFlutter.OrigenDesarrollo);
+            Check(!response.Headers.Contains("Access-Control-Allow-Origin"),"producción no hereda el origen local por defecto");
+        }
+        foreach(var origin in new[]{"*","https://example.com/ruta","https://example.com?token=x"})
+        {
+            var b=WebApplication.CreateBuilder();b.Configuration.AddInMemoryCollection(new Dictionary<string,string?>{["Cors:OrigenesPermitidos:0"]=origin});
+            try{b.Services.AgregarCorsFlutter(b.Configuration,b.Environment);throw new Exception("Aceptó origen inválido");}
+            catch(InvalidOperationException){Check(true,"configuración rechaza origen no explícito");}
+        }
+        Console.WriteLine($"OK: {count} comprobaciones CORS por HTTP; sin SQL Server.");
+    }
+    private static async Task<WebApplication> App(string environment,Dictionary<string,string?>? configuration=null)
+    {
+        var b=WebApplication.CreateBuilder(new WebApplicationOptions{EnvironmentName=environment});b.Logging.ClearProviders();b.WebHost.UseUrls("http://127.0.0.1:0");
+        if(configuration is not null)b.Configuration.AddInMemoryCollection(configuration);
+        b.Services.AgregarCorsFlutter(b.Configuration,b.Environment);
+        b.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions,RoleAuth>("test",_=>{});b.Services.AddAuthorization(PoliticasAcceso.Configurar);
+        var app=b.Build();app.UsarCorsFlutter();app.UseAuthentication();app.UseAuthorization();
+        app.MapGet("/api/cors-test",()=>Results.Ok(new {ok=true})).RequireAuthorization();
+        app.MapGet("/api/cors-admin",()=>Results.Ok()).RequireAuthorization(PoliticasAcceso.SoloAdministrador);
+        await app.StartAsync();return app;
+    }
+    private static HttpClient Client(WebApplication app)=>new(){BaseAddress=new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
+    private static async Task<HttpResponseMessage> Preflight(HttpClient http,string origin)
+    {
+        using var request=new HttpRequestMessage(HttpMethod.Options,"/api/cors-test");request.Headers.Add("Origin",origin);
+        request.Headers.Add("Access-Control-Request-Method","POST");request.Headers.Add("Access-Control-Request-Headers","authorization,content-type");
+        return await http.SendAsync(request);
+    }
+}

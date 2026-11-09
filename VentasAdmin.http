@@ -1,0 +1,13 @@
+@baseUrl = http://localhost:5161
+@tokenAdmin = PEGAR_TOKEN_ADMIN
+
+### Total acumulado de compras simuladas guardadas; solo administrador
+GET {{baseUrl}}/api/admin/ventas/resumen
+Authorization: Bearer {{tokenAdmin}}
+
+### Total de un rango de días de compra UTC, incluidos ambos extremos
+GET {{baseUrl}}/api/admin/ventas/resumen?desde=2026-11-01&hasta=2026-11-30
+Authorization: Bearer {{tokenAdmin}}
+
+### Sin sesión devuelve 401; con token cliente devuelve 403
+GET {{baseUrl}}/api/admin/ventas/resumen
