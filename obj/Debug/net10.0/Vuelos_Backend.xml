@@ -596,7 +596,7 @@
         <member name="T:Vuelos_Backend.Services.Pagos.PayPalClient">
             <summary>REST oficial Orders v2. Nunca recibe importes ni credenciales del navegador.</summary>
         </member>
-        <member name="M:Vuelos_Backend.Services.Pagos.PayPalClient.#ctor(System.Net.Http.HttpClient,Microsoft.Extensions.Options.IOptions{Vuelos_Backend.Models.Pagos.OpcionesPayPal})">
+        <member name="M:Vuelos_Backend.Services.Pagos.PayPalClient.#ctor(System.Net.Http.HttpClient,Microsoft.Extensions.Options.IOptions{Vuelos_Backend.Models.Pagos.OpcionesPayPal},Microsoft.Extensions.Logging.ILogger{Vuelos_Backend.Services.Pagos.PayPalClient})">
             <summary>REST oficial Orders v2. Nunca recibe importes ni credenciales del navegador.</summary>
         </member>
         <member name="T:Program">
