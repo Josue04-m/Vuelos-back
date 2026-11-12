@@ -775,3 +775,15 @@ C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_B
 C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\obj\verificacion-render\runtimes\win-x86\native\msalruntime_x86.dll
 C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\obj\verificacion-render\runtimes\win\lib\net10.0\System.Security.Cryptography.Pkcs.dll
 C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\obj\verificacion-supabase\deploy\appsettings.json
+C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\bin\Debug\net10.0\deploy\appsettings.json
+C:\Users\Josue\AppData\Local\Temp\vb_out\appsettings.Development.json
+C:\Users\Josue\AppData\Local\Temp\vb_out\appsettings.json
+C:\Users\Josue\AppData\Local\Temp\vb_out\deploy\appsettings.json
+C:\Users\Josue\AppData\Local\Temp\vb_out\docs\SUPABASE_CONFIGURACION.example.json
+C:\Users\Josue\AppData\Local\Temp\vb_out\Vuelos_Backend.staticwebassets.endpoints.json
+C:\Users\Josue\AppData\Local\Temp\vb_out\Vuelos_Backend.exe
+C:\Users\Josue\AppData\Local\Temp\vb_out\Vuelos_Backend.deps.json
+C:\Users\Josue\AppData\Local\Temp\vb_out\Vuelos_Backend.runtimeconfig.json
+C:\Users\Josue\AppData\Local\Temp\vb_out\Vuelos_Backend.dll
+C:\Users\Josue\AppData\Local\Temp\vb_out\Vuelos_Backend.pdb
+C:\Users\Josue\AppData\Local\Temp\vb_out\Vuelos_Backend.xml

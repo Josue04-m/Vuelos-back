@@ -31,5 +31,13 @@ public sealed class OpcionesPayPal
 
     private bool UrlValida(string valor) => Uri.TryCreate(valor, UriKind.Absolute, out var uri) &&
         string.IsNullOrEmpty(uri.UserInfo) && (uri.Scheme == "https" ||
-        Entorno == "Sandbox" && uri.IsLoopback && uri.Scheme == "http");
+        Entorno == "Sandbox" && uri.Scheme == "http" && (uri.IsLoopback || EsIpPrivada(uri)));
+
+    // Solo Sandbox: permite pruebas por red privada (LAN/ZeroTier). Live exige HTTPS.
+    private static bool EsIpPrivada(Uri uri)
+    {
+        if (uri.HostNameType != UriHostNameType.IPv4 || !System.Net.IPAddress.TryParse(uri.Host, out var ip)) return false;
+        var b = ip.GetAddressBytes();
+        return b[0] == 10 || b[0] == 172 && b[1] is >= 16 and <= 31 || b[0] == 192 && b[1] == 168;
+    }
 }

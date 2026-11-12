@@ -51,7 +51,7 @@ Backend configura `PayPal:ReturnUrl` y `PayPal:CancelUrl` de forma global; el en
 
 Para móvil, acordar enlaces HTTPS de retorno/cancelación y su asociación con Android/iOS, o una página HTTPS intermedia que permita volver a la app. Para Flutter web, acordar sus rutas de retorno y el comportamiento al recargar la página. Son decisiones de despliegue pendientes; no existen pantallas Flutter ni rutas web de retorno implementadas por este cambio del backend.
 
-La validación actual acepta URLs HTTPS y, en Sandbox, HTTP únicamente en localhost. **No acepta directamente esquemas personalizados como `miapp://` ni HTTP con una IP LAN.** Acordar las URLs antes de implementar su navegación.
+La validación actual acepta URLs HTTPS y, en Sandbox, HTTP únicamente en localhost. **No acepta esquemas personalizados como `miapp://`.** En Sandbox también acepta HTTP con IPs privadas (10.x, 172.16-31.x, 192.168.x), útil para pruebas por LAN o ZeroTier. Acordar las URLs antes de implementar su navegación.
 
 Conservar el contexto local de la reserva y restaurarlo al regresar. Los parámetros de la URL de retorno no autorizan compras ni sustituyen la identidad o la orden guardada por el backend. Si venció la sesión, pedir login y retomar la consulta con la misma cuenta.
 

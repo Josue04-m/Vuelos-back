@@ -10,7 +10,7 @@ using Vuelos_Backend.Models.Reservas;
 namespace Vuelos_Backend.Services.Pagos;
 
 /// <summary>REST oficial Orders v2. Nunca recibe importes ni credenciales del navegador.</summary>
-public sealed class PayPalClient(HttpClient http, IOptions<OpcionesPayPal> opciones) : IPayPalClient
+public sealed class PayPalClient(HttpClient http, IOptions<OpcionesPayPal> opciones, ILogger<PayPalClient> log) : IPayPalClient
 {
     private readonly OpcionesPayPal config = opciones.Value;
     private Uri Base => new(config.Entorno == "Sandbox" ? "https://api-m.sandbox.paypal.com/" : "https://api-m.paypal.com/");
@@ -78,7 +78,11 @@ public sealed class PayPalClient(HttpClient http, IOptions<OpcionesPayPal> opcio
                 Convert.ToBase64String(Encoding.UTF8.GetBytes(config.ClientId + ":" + config.ClientSecret)));
             tokenRequest.Content = new FormUrlEncodedContent(new Dictionary<string, string> { ["grant_type"] = "client_credentials" });
             using var tokenResponse = await http.SendAsync(tokenRequest, ct);
-            if (!tokenResponse.IsSuccessStatusCode) throw Proveedor();
+            if (!tokenResponse.IsSuccessStatusCode)
+            {
+                await RegistrarFalloAsync("token", tokenResponse, ct);
+                throw Proveedor();
+            }
             using var tokenJson = JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync(ct));
             var token = Texto(tokenJson.RootElement, "access_token");
             if (string.IsNullOrWhiteSpace(token)) throw Proveedor();
@@ -88,7 +92,11 @@ public sealed class PayPalClient(HttpClient http, IOptions<OpcionesPayPal> opcio
             if (requestId is not null) request.Headers.Add("PayPal-Request-Id", requestId);
             if (body is not null) request.Content = JsonContent.Create(body);
             using var response = await http.SendAsync(request, ct);
-            if (!response.IsSuccessStatusCode) throw Proveedor();
+            if (!response.IsSuccessStatusCode)
+            {
+                await RegistrarFalloAsync(metodo + " " + ruta, response, ct);
+                throw Proveedor();
+            }
             return JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or FormatException)
@@ -96,6 +104,14 @@ public sealed class PayPalClient(HttpClient http, IOptions<OpcionesPayPal> opcio
             // El llamador conserva la protección de la reserva ante un resultado incierto de captura.
             throw Proveedor();
         }
+    }
+
+    private async Task RegistrarFalloAsync(string operacion, HttpResponseMessage respuesta, CancellationToken ct)
+    {
+        // Solo estado y cuerpo de error de PayPal (name/message/debug_id); nunca credenciales.
+        var cuerpo = await respuesta.Content.ReadAsStringAsync(ct);
+        log.LogWarning("PayPal rechazó {Operacion}. Estado: {Estado}. Respuesta: {Cuerpo}",
+            operacion, (int)respuesta.StatusCode, cuerpo.Length > 600 ? cuerpo[..600] : cuerpo);
     }
 
     public static OrdenPayPal LeerOrden(JsonElement root)
