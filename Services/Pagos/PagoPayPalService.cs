@@ -134,7 +134,7 @@ public sealed class PagoPayPalService(IPagoPayPalRepository store, IReservaRepos
 
     public async Task ProcesarEventoAsync(System.Text.Json.JsonElement evento, IHeaderDictionary headers, CancellationToken ct)
     {
-        Config.Validar();
+        Config.ValidarWebhook();
         if (!await paypal.VerificarEventoAsync(evento, headers, ct))
             throw new ReservaOperacionException(ErrorReserva.SolicitudInvalida, "webhook_no_verificado", "Firma de PayPal inválida.");
         var eventId = PayPalClient.Texto(evento, "id");

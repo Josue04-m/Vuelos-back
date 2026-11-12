@@ -47,6 +47,7 @@ public sealed class PayPalClient(HttpClient http, IOptions<OpcionesPayPal> opcio
 
     public async Task<bool> VerificarEventoAsync(JsonElement evento, IHeaderDictionary headers, CancellationToken ct)
     {
+        config.ValidarWebhook();
         string Header(string nombre)
         {
             var valor = headers[nombre].ToString();

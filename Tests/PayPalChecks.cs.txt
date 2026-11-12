@@ -190,6 +190,7 @@ internal static class PayPalChecks
     private static async Task ClienteHttpChecks()
     {
         var config=PayPalFixture.Config(); var handler=new HttpPayPalPrueba();
+        config.WebhookId="";
         using var http=new HttpClient(handler); var client=new PayPalClient(http,Options.Create(config));
         var p=new PagoPayPal {PagoId=Guid.NewGuid(),Monto=80.25m,MerchantId=config.MerchantId,OrdenId="ORDER123"}; handler.Pago=p;
         var order=await client.CrearAsync(p,Ct); PagoPayPalService.ValidarOrden(p,order,true);
@@ -197,6 +198,11 @@ internal static class PayPalChecks
         Check(handler.CreateIds.Distinct().Count()==1 && handler.CaptureIds.Single()!=handler.CreateIds[0],"request IDs estables y diferentes por operación");
         Check(handler.CreateBody!.Contains("80.25") && handler.CreateBody.Contains("USD") && handler.CreateBody.Contains(p.PagoId.ToString("N")),"contrato JSON importe USD y referencia del servidor");
         Check(handler.Hosts.All(h=>h=="api-m.sandbox.paypal.com"),"Sandbox usa exclusivamente host oficial");
+        Check(config.WebhookId=="","crear y capturar funcionan sin WebhookId con proveedor simulado");
+        var llamadas=handler.Hosts.Count;
+        using var evento=JsonDocument.Parse("{}");
+        await Error(()=>client.VerificarEventoAsync(evento.RootElement,new HeaderDictionary(),Ct),"paypal_webhook_sin_configurar");
+        Check(handler.Hosts.Count==llamadas,"webhook sin configurar rechazado antes de contactar PayPal");
         await Error(()=>Task.Run(()=>PagoPayPalService.ValidarOrden(p,order with {Monto=0.01m},true)),"pago_inconsistente");
         await Error(()=>Task.Run(()=>PagoPayPalService.ValidarOrden(p,order with {MerchantId="OTHER"},true)),"pago_inconsistente");
         await Error(()=>Task.Run(()=>PagoPayPalService.ValidarOrden(p,order with {CustomId="OTHER"},true)),"pago_inconsistente");
