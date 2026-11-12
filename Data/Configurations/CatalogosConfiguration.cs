@@ -19,9 +19,9 @@ public static class CatalogosConfiguration
     private static void Configure<T>(ModelBuilder model) where T : class, ICatalogoAdministrable
     {
         var entity = model.Entity<T>();
-        entity.Property(x => x.Activo).HasColumnName("activo").HasColumnType("bit").HasDefaultValue(true);
-        entity.Property(x => x.FechaDesactivacion).HasColumnName("fecha_desactivacion").HasColumnType("datetime2");
-        entity.Property(x => x.RowVersion).HasColumnName("row_version").IsRowVersion();
+        entity.Property(x => x.Activo).HasColumnName("activo").HasColumnType("boolean").HasDefaultValue(true);
+        entity.Property(x => x.FechaDesactivacion).HasColumnName("fecha_desactivacion").HasColumnType("timestamp with time zone");
+        entity.Property(x => x.RowVersion).HasColumnName("row_version").IsConcurrencyToken().ValueGeneratedOnAddOrUpdate();
         // Sin filtro global: los vuelos y reservas conservan referencias a catálogos inactivos.
     }
 }

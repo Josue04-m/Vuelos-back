@@ -40,11 +40,11 @@ public sealed class ImportacionAvionesService(ICatalogosAdminRepository reposito
             ct.ThrowIfCancellationRequested();
             var cantidades = new[] { (request.PrimeraClaseId, fila.CantidadPrimeraClase),
                 (request.SegundaClaseId, fila.CantidadSegundaClase), (request.TerceraClaseId, fila.CantidadTerceraClase) };
-            var avion = await CreacionAviones.CrearAsync(repository, new CrearAvionRequest
+            var avion = await CreacionAviones.CrearAsync(repository, new DatosCreacionAvion
             {
                 Modelo = fila.Modelo, Matricula = fila.Matricula, CapacidadTotal = fila.CapacidadTotal,
                 LetrasPorFila = fila.LetrasPorFila,
-                DistribucionClases = cantidades.Where(c => c.Item2 > 0).Select(c => new DistribucionClaseRequest { CategoriaId = c.Item1, Cantidad = c.Item2 }).ToArray()
+                DistribucionClases = cantidades.Where(c => c.Item2 > 0).Select(c => new DistribucionClase { CategoriaId = c.Item1, Cantidad = c.Item2 }).ToArray()
             }, ct, new MetadatosAvionResponse(fila.CodigoIata, fila.CodigoIcao, fila.CantidadPrimeraClase,
                 fila.CantidadSegundaClase, fila.CantidadTerceraClase, fila.LetrasPorFila, fila.DatosOrigenJson));
             creadas.Add(fila with { MatriculaRegistrada = true, AvionId = avion.AvionId });

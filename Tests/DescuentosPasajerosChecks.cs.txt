@@ -14,7 +14,7 @@ internal static class DescuentosPasajerosChecks
     {
         var count = 0;
         void Check(bool ok, string name) { if (!ok) throw new Exception(name); count++; }
-        var config = new ConfigurationBuilder().SetBasePath(Directory.GetCurrentDirectory())
+        var config = new ConfigurationBuilder().SetBasePath(Path.GetDirectoryName(typeof(ReservaService).Assembly.Location)!)
             .AddJsonFile("appsettings.json").AddJsonFile("appsettings.Development.json", optional: true).Build();
         var options = new OpcionesTarifasPasajero();
         config.GetSection(OpcionesTarifasPasajero.Seccion).Bind(options);

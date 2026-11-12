@@ -34,6 +34,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AgregarCorsFlutter(builder.Configuration, builder.Environment);
 
 builder.Services.AddControllers();
+builder.Services.AddHealthChecks();
 builder.Services.Configure<Vuelos_Backend.Models.Pagos.OpcionesPayPal>(builder.Configuration.GetSection("PayPal"));
 builder.Services.AddHttpClient<Vuelos_Backend.Interface.Pagos.IPayPalClient, Vuelos_Backend.Services.Pagos.PayPalClient>(client =>
 {
@@ -92,17 +93,14 @@ builder.Services.AddAuthentication(TokenAuthenticationHandler.NombreEsquema)
         TokenAuthenticationHandler.NombreEsquema, _ => { });
 builder.Services.AddAuthorization(PoliticasAcceso.Configurar);
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("testConnection")
-        ?? throw new InvalidOperationException(
-            "Configure ConnectionStrings:testConnection mediante secretos de usuario o variables de entorno.")));
+    Vuelos_Backend.Configuration.BaseDatosPostgreSql.Configurar(options, builder.Configuration));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(DocumentacionApi.Configurar);
 
 var app = builder.Build();
 
 app.UseExceptionHandler();
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Habilitado"))
 {
     app.UseSwagger();
     app.UseSwaggerUI(options =>
@@ -115,5 +113,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+// Comprueba el proceso HTTP; no ejecuta consultas ni modifica la base.
+app.MapHealthChecks("/health").AllowAnonymous();
 
 app.Run();

@@ -1,5 +1,4 @@
 using System.Data;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vuelos_Backend.Data;
@@ -11,15 +10,21 @@ namespace Vuelos_Backend.Repositories.Reservas;
 
 public sealed class ReservaRepository(AppDbContext context) : IReservaRepository
 {
-    public async Task<ITransaccionReserva> IniciarTransaccionAsync(CancellationToken cancellationToken) =>
-        new Transaccion(context,
-            await EjecutarAsync(() => context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)));
+    public async Task<ITransaccionReserva> IniciarTransaccionAsync(CancellationToken cancellationToken) => await EjecutarAsync(async () =>
+    {
+        var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        try
+        {
+            await ConsultasBloqueoPostgreSql.LimitarEsperaAsync(context, cancellationToken);
+            return (ITransaccionReserva)new Transaccion(context, transaction);
+        }
+        catch { await transaction.DisposeAsync(); throw; }
+    });
 
     public Task<Vuelo?> BloquearVueloAsync(int vueloId, CancellationToken cancellationToken)
     {
         ExigirTransaccion();
-        // Todas las escrituras bloquean primero el vuelo. HOLDLOCK conserva el
-        // bloqueo hasta el commit y también impide cambios administrativos de estado.
+        // Todas las escrituras bloquean primero el vuelo hasta el commit/rollback.
         return EjecutarAsync(() => ConsultaVueloBloqueado(vueloId).SingleOrDefaultAsync(cancellationToken));
     }
 
@@ -30,13 +35,11 @@ public sealed class ReservaRepository(AppDbContext context) : IReservaRepository
     }
 
     internal IQueryable<Vuelo> ConsultaVueloBloqueado(int vueloId) =>
-        context.Vuelos.FromSqlInterpolated(
-            $"SELECT * FROM [dbo].[vuelos] WITH (UPDLOCK, HOLDLOCK) WHERE [vuelo_id] = {vueloId}")
+        ConsultasBloqueoPostgreSql.Vuelo(context, vueloId)
             .Include(v => v.Avion);
 
     internal IQueryable<Reserva> ConsultaReservaBloqueada(int reservaId, int usuarioId) =>
-        context.Reservas.FromSqlInterpolated(
-            $"SELECT * FROM [dbo].[reservas] WITH (UPDLOCK, HOLDLOCK) WHERE [reserva_id] = {reservaId} AND [usuario_id] = {usuarioId}");
+        ConsultasBloqueoPostgreSql.ReservaPropia(context, reservaId, usuarioId);
 
     public Task<int?> ObtenerVueloPropioAsync(int reservaId, int usuarioId, CancellationToken cancellationToken) =>
         EjecutarAsync(() => context.Reservas.AsNoTracking()
@@ -129,18 +132,16 @@ public sealed class ReservaRepository(AppDbContext context) : IReservaRepository
 
     private static ReservaOperacionException? TraducirConflicto(Exception exception)
     {
+        if (ErroresPostgreSql.EsConcurrencia(exception))
+            return new(ErrorReserva.Conflicto, "operacion_concurrente", "La operación compitió con otra escritura. Consulte el estado actual.");
         if (exception is DbUpdateConcurrencyException)
             return new(ErrorReserva.Conflicto, "version_desactualizada", "La información cambió. Consulte la versión vigente.");
-        var sql = exception as SqlException ?? exception.InnerException as SqlException;
-        if (sql is null) return null;
-        if (sql.Number == 1205)
-            return new(ErrorReserva.Conflicto, "operacion_concurrente", "La operación compitió con otra escritura. Consulte el estado actual.");
-        if (sql.Errors.Cast<SqlError>().Any(e => e.Number is 2601 or 2627 &&
-            e.Message.Contains("UX_detalle_reservas_asiento_activo", StringComparison.OrdinalIgnoreCase)))
+        if (ErroresPostgreSql.EsUnico(exception, "UX_detalle_reservas_asiento_activo"))
             return new(ErrorReserva.Conflicto, "asiento_no_disponible", "Un asiento ya tiene una asignación activa.");
-        if (sql.Errors.Cast<SqlError>().Any(e => e.Number is 2601 or 2627 &&
-            e.Message.Contains("UQ_reservas_codigo_reserva", StringComparison.OrdinalIgnoreCase)))
+        if (ErroresPostgreSql.EsUnico(exception, "UQ_reservas_codigo_reserva"))
             return new(ErrorReserva.Conflicto, "codigo_reserva_ocupado", "No se pudo asignar un código único a la reserva.");
+        if (ErroresPostgreSql.EsConflicto(exception))
+            return new(ErrorReserva.Conflicto, "conflicto_reserva", "Otra escritura modificó la reserva o sus referencias. Consulte su estado actual.");
         return null;
     }
 
@@ -154,7 +155,7 @@ public sealed class ReservaRepository(AppDbContext context) : IReservaRepository
         }
         public async ValueTask DisposeAsync()
         {
-            try { await transaction.DisposeAsync(); } // Sin commit, SQL Server revierte todo.
+            try { await transaction.DisposeAsync(); } // Sin commit, PostgreSQL revierte todo.
             finally { if (!confirmada) context.ChangeTracker.Clear(); }
         }
     }

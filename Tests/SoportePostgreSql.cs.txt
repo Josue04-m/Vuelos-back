@@ -1,0 +1,23 @@
+using System;
+using System.IO;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Vuelos_Backend.Data;
+
+internal static class PruebasModeloPostgreSql
+{
+    public static string Raiz => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(AppDbContext).Assembly.Location)!, "..", ".."));
+    public static Migration Inicial(AppDbContext db)
+    {
+        var migrations = db.GetService<IMigrationsAssembly>();
+        var entry = migrations.Migrations.Single(m => m.Key.EndsWith("_InicialPostgreSql"));
+        return migrations.CreateMigration(entry.Value, db.Database.ProviderName!);
+    }
+    public static CreateTableOperation Tabla(Migration migration, string name) => migration.UpOperations.OfType<CreateTableOperation>().Single(t => t.Name == name);
+    public static string Sql(AppDbContext db) => db.GetService<IMigrator>().GenerateScript("0", "InicialPostgreSql");
+    public static bool ProtegeDown(Migration migration) => migration.DownOperations.Count == 1 && migration.DownOperations[0] is SqlOperation sql && sql.Sql.Contains("RAISE EXCEPTION") && !sql.Sql.Contains("DROP");
+    public static DateTimeOffset Precision(DateTimeOffset date) => new DateTimeOffset(new DateTime(date.UtcTicks - date.UtcTicks % 10, DateTimeKind.Utc)).ToOffset(date.Offset);
+}

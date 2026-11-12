@@ -8,19 +8,15 @@ using Vuelos_Backend.Models.Catalogos.DTOs;
 
 namespace Vuelos_Backend.Services.Catalogos;
 
-/// <summary>Creación compartida por alta individual e importación; el llamador mantiene la transacción administrativa.</summary>
+/// <summary>Genera aviones y asientos para la carga CSV dentro de la transaccion administrativa.</summary>
 internal static class CreacionAviones
 {
-    internal static async Task<Avion> CrearAsync(ICatalogosAdminRepository repository, CrearAvionRequest request, CancellationToken ct, MetadatosAvionResponse? metadatos = null)
+    internal static async Task<Avion> CrearAsync(ICatalogosAdminRepository repository, DatosCreacionAvion request, CancellationToken ct, MetadatosAvionResponse? metadatos = null)
     {
         Validar(request);
         var letras = request.LetrasPorFila?.ToUpperInvariant() ?? "";
         if (letras.Distinct().Count() != letras.Length) throw Invalido("Las letras de cada fila no pueden repetirse.");
-        if (request.DistribucionClases is not null && request.CategoriaId.HasValue)
-            throw Invalido("Use distribucionClases o categoriaId, sin combinarlos.");
-        var distribucion = request.DistribucionClases ?? (request.CategoriaId is int categoriaId
-            ? new[] { new DistribucionClaseRequest { CategoriaId = categoriaId, Cantidad = request.CapacidadTotal } }
-            : throw Invalido("Indique la distribución de clases del avión."));
+        var distribucion = request.DistribucionClases ?? throw Invalido("Indique la distribución de clases del avión.");
         if (distribucion.Count == 0 || distribucion.Any(d => d is null)) throw Invalido("La distribución no puede estar vacía ni contener elementos nulos.");
         foreach (var clase in distribucion) Validar(clase);
         if (distribucion.Select(d => d.CategoriaId).Distinct().Count() != distribucion.Count || distribucion.Sum(d => (long)d.Cantidad) != request.CapacidadTotal)

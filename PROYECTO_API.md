@@ -10,7 +10,7 @@ La API permitirá registrar clientes, autenticar usuarios, consultar vuelos, sel
 
 - Backend: C# y ASP.NET Core Web API con Controllers. Esta decisión reemplaza la referencia anterior a Flask.
 
-- Persistencia: SQL Server mediante Entity Framework Core.
+- Persistencia original: SQL Server mediante Entity Framework Core. En la rama `feature/SupaBase` se prepara PostgreSQL de Supabase por etapas; ver `docs/SUPABASE_ETAPA_1.md` a `docs/SUPABASE_ETAPA_5.md`. Modelo, repositorios y migración están preparados. La suite offline completa está adaptada y aprobada; las pruebas contra Supabase y PayPal Sandbox reales siguen pendientes de conexión/base de pruebas y ejecución. No se declara operativo ni se hace el corte de datos todavía.
 
 - Consumidor futuro: Flutter, mediante HTTP/HTTPS y JSON.
 
@@ -489,7 +489,7 @@ Preparar una migración de datos separada que cree dos cuentas de laboratorio:
 | Nombre | Apellido | Email | Rol |
 | --- | --- | --- | --- |
 | Administrador | Nexus | admin@pacificnexus.test | admin |
-| Sofia | Torres | cliente@pacificnexus.test | cliente |
+| Josue | Laboratorio | josue@pacificnexus.test | cliente |
 
 Los nombres son datos ficticios. Las contraseñas serán exclusivas de pruebas y se comunicarán en las instrucciones locales de ejecución. Guardar únicamente sus hashes, compatibles con el mismo verificador utilizado al iniciar sesión; no insertar contraseñas en texto plano en password_hash.
 

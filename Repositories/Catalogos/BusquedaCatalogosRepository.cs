@@ -16,24 +16,29 @@ public sealed class BusquedaCatalogosRepository(AppDbContext context) : IBusqued
         .Select(t => t.Length > MaxLongitudTermino ? t[..MaxLongitudTermino] : t)
         .Take(MaxTerminos).ToArray();
 
-    public async Task<IReadOnlyList<AeropuertoResumenResponse>> BuscarAeropuertosAsync(string? q, int limite, CancellationToken ct)
+    public async Task<IReadOnlyList<AeropuertoResumenResponse>> BuscarAeropuertosAsync(string? q, int limite, CancellationToken ct) =>
+        await ConsultaAeropuertos(q, limite).ToListAsync(ct);
+
+    internal IQueryable<AeropuertoResumenResponse> ConsultaAeropuertos(string? q, int limite)
     {
         var terminos = Terminos(q);
         var query = context.Aeropuertos.AsNoTracking().Where(a => a.Activo);
         foreach (var t in terminos)
         {
-            var termino = t;
-            query = query.Where(a => a.CodigoIata.Contains(termino) || (a.CodigoIcao != null && a.CodigoIcao.Contains(termino)) ||
-                a.Nombre.Contains(termino) || a.Ciudad.Contains(termino) || a.Pais.Contains(termino));
+            var pattern = PatronesPostgreSql.Contiene(t);
+            query = query.Where(a => EF.Functions.ILike(a.CodigoIata, pattern, "!") ||
+                (a.CodigoIcao != null && EF.Functions.ILike(a.CodigoIcao, pattern, "!")) ||
+                EF.Functions.ILike(a.Nombre, pattern, "!") || EF.Functions.ILike(a.Ciudad, pattern, "!") ||
+                EF.Functions.ILike(a.Pais, pattern, "!"));
         }
-        var primero = terminos.FirstOrDefault() ?? "";
+        var primero = (terminos.FirstOrDefault() ?? "").ToUpperInvariant();
+        var prefijo = PatronesPostgreSql.Prefijo(primero);
         // Coincidencia exacta de IATA primero, luego prefijo; el resto por nombre.
-        return await query
-            .OrderBy(a => a.CodigoIata == primero ? 0 : a.CodigoIata.StartsWith(primero) ? 1 : 2)
+        return query
+            .OrderBy(a => a.CodigoIata.ToUpper() == primero ? 0 : EF.Functions.ILike(a.CodigoIata, prefijo, "!") ? 1 : 2)
             .ThenBy(a => a.Nombre)
             .Take(limite)
-            .Select(a => new AeropuertoResumenResponse(a.AeropuertoId, a.CodigoIata, a.CodigoIcao, a.Nombre, a.Ciudad, a.Pais))
-            .ToListAsync(ct);
+            .Select(a => new AeropuertoResumenResponse(a.AeropuertoId, a.CodigoIata, a.CodigoIcao, a.Nombre, a.Ciudad, a.Pais));
     }
 
     public Task<AeropuertoResumenResponse?> ObtenerAeropuertoAsync(int id, CancellationToken ct) =>
@@ -41,19 +46,22 @@ public sealed class BusquedaCatalogosRepository(AppDbContext context) : IBusqued
             .Select(a => new AeropuertoResumenResponse(a.AeropuertoId, a.CodigoIata, a.CodigoIcao, a.Nombre, a.Ciudad, a.Pais))
             .FirstOrDefaultAsync(ct);
 
-    public async Task<IReadOnlyList<AvionResumenResponse>> BuscarAvionesAsync(string? q, int limite, CancellationToken ct)
+    public async Task<IReadOnlyList<AvionResumenResponse>> BuscarAvionesAsync(string? q, int limite, CancellationToken ct) =>
+        await ConsultaAviones(q, limite).ToListAsync(ct);
+
+    internal IQueryable<AvionResumenResponse> ConsultaAviones(string? q, int limite)
     {
         var terminos = Terminos(q);
         var query = context.Aviones.AsNoTracking().Where(a => a.Activo);
         foreach (var t in terminos)
         {
-            var termino = t;
-            query = query.Where(a => a.Modelo.Contains(termino) || a.Matricula.Contains(termino) ||
-                (a.CodigoIata != null && a.CodigoIata.Contains(termino)) || (a.CodigoIcao != null && a.CodigoIcao.Contains(termino)));
+            var pattern = PatronesPostgreSql.Contiene(t);
+            query = query.Where(a => EF.Functions.ILike(a.Modelo, pattern, "!") || EF.Functions.ILike(a.Matricula, pattern, "!") ||
+                (a.CodigoIata != null && EF.Functions.ILike(a.CodigoIata, pattern, "!")) ||
+                (a.CodigoIcao != null && EF.Functions.ILike(a.CodigoIcao, pattern, "!")));
         }
-        return await query.OrderBy(a => a.Modelo).ThenBy(a => a.Matricula)
+        return query.OrderBy(a => a.Modelo).ThenBy(a => a.Matricula)
             .Take(limite)
-            .Select(a => new AvionResumenResponse(a.AvionId, a.Modelo, a.Matricula, a.CapacidadTotal))
-            .ToListAsync(ct);
+            .Select(a => new AvionResumenResponse(a.AvionId, a.Modelo, a.Matricula, a.CapacidadTotal));
     }
 }

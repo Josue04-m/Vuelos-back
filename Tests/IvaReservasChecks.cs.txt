@@ -112,14 +112,14 @@ internal static class IvaReservasChecks
         Check(reviewed.Estado=="revision" && reviewed.EstadoReserva=="pendiente_pago" && reviewed.Monto==115,"captura de un importe distinto de reserva no acredita compra y requiere revisión");
 
         await HttpChecks();
-        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused").Options);
         Check(!db.Database.HasPendingModelChanges(),"snapshot de IVA actualizado");
-        var migrations=db.GetService<IMigrationsAssembly>();var entry=migrations.Migrations.Single(m=>m.Key.EndsWith("_DesgloseIvaReservas"));var migration=migrations.CreateMigration(entry.Value,db.Database.ProviderName!);
-        Check(migration.UpOperations.OfType<AddColumnOperation>().Count()==3 && migration.UpOperations.OfType<AddColumnOperation>().All(c=>c.IsNullable && c.DefaultValue==null),"tres columnas nullable sin reinterpretar reservas anteriores");
-        Check(migration.UpOperations.OfType<AddCheckConstraintOperation>().Count()==1 && !migration.UpOperations.Any(o=>o is UpdateDataOperation or DeleteDataOperation or DropColumnOperation or AlterColumnOperation),"CHECK de suma/IVA sin cambios en importes históricos");
-        Check(migration.DownOperations.First() is SqlOperation guard && guard.Sql.Contains("THROW"),"Down protege desglose de importes existente");
-        var sql=db.GetService<IMigrator>().GenerateScript("AvionesDatosCompletos","DesgloseIvaReservas");
-        Check(sql.Contains("[porcentaje_iva] decimal(5,2) NULL") && sql.Contains("CK_reservas_desglose_iva") && !sql.Contains("DROP TABLE"),"SQL de ampliación generado sin ejecutarlo");
+        var migration=PruebasModeloPostgreSql.Inicial(db);var reservation=PruebasModeloPostgreSql.Tabla(migration,"reservas");
+        Check(new[]{"subtotal","porcentaje_iva","monto_iva"}.All(n=>reservation.Columns.Single(c=>c.Name==n) is {IsNullable:true,DefaultValue:null}),"desglose nullable sin inventar IVA historico");
+        Check(reservation.CheckConstraints.Any(c=>c.Name=="CK_reservas_desglose_iva") && !migration.UpOperations.Any(o=>o is UpdateDataOperation or DeleteDataOperation or DropColumnOperation or AlterColumnOperation),"CHECK IVA sin reescribir importes");
+        Check(PruebasModeloPostgreSql.ProtegeDown(migration),"Down protege importes");
+        var sql=PruebasModeloPostgreSql.Sql(db);
+        Check(sql.Contains("porcentaje_iva numeric(5,2)") && sql.Contains("CK_reservas_desglose_iva") && !sql.Contains("DROP TABLE"),"SQL IVA PostgreSQL generado sin ejecutarlo");
         Check(db.Database.GetDbConnection().State==System.Data.ConnectionState.Closed,"sin conexión a SQL Server");
         Console.WriteLine($"OK: {count} comprobaciones de IVA y total PayPal; sin cobros ni SQL Server.");
     }

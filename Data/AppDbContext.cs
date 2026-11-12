@@ -31,14 +31,17 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.HasDefaultSchema(Configuration.BaseDatosPostgreSql.Esquema);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
         AmpliacionesConfiguration.Configure(modelBuilder);
         CatalogosConfiguration.Configure(modelBuilder);
+        VersionesPostgreSqlConfiguration.Configure(modelBuilder);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         RechazarBorradosFisicos();
+        NormalizarFechasModificadas();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
@@ -46,7 +49,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         RechazarBorradosFisicos();
+        NormalizarFechasModificadas();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void NormalizarFechasModificadas()
+    {
+        foreach (var entry in ChangeTracker.Entries().Where(e => e.State is EntityState.Added or EntityState.Modified))
+        foreach (var property in entry.Properties)
+            if ((entry.State == EntityState.Added || property.IsModified) && property.CurrentValue is DateTime date)
+                property.CurrentValue = FechasPostgreSql.Normalizar(date);
     }
 
     private void RechazarBorradosFisicos()

@@ -1,0 +1,38 @@
+using System;
+using System.ComponentModel.DataAnnotations;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Identity;
+using Vuelos_Backend.Models.Autenticacion.DTOs;
+using Vuelos_Backend.Models.Usuarios;
+
+internal static class UsuariosLaboratorioPostgreSql
+{
+    public static int Main()
+    {
+        try
+        {
+            var sql=File.ReadAllText(Path.Combine(PruebasModeloPostgreSql.Raiz,"Data/Scripts/Supabase_UsuariosLaboratorio.sql"));
+            var rows=Regex.Matches(sql,@"'(?<email>(?:admin|josue)@pacificnexus\.test)',\s*'(?<hash>AQ[A-Za-z0-9+/=]+)',\s*'(?<rol>admin|cliente)'").Cast<Match>().ToArray();
+            var count=0;void Check(bool value,string name){if(!value)throw new Exception(name);count++;}
+            Check(rows.Length==2,"Deben existir dos cuentas hasheadas");
+            var hasher=new PasswordHasher<Usuario>();
+            foreach(var row in rows)
+            {
+                var email=row.Groups["email"].Value;var hash=row.Groups["hash"].Value;
+                Check(hasher.VerifyHashedPassword(new Usuario(),hash,"12345")!=PasswordVerificationResult.Failed,"Hash incompatible con login");
+                Check(hasher.VerifyHashedPassword(new Usuario(),hash,"incorrecta") == PasswordVerificationResult.Failed,"Acepta password incorrecta");
+                var login=new LoginRequest{Email=email,Password="12345"};
+                Check(Validator.TryValidateObject(login,new ValidationContext(login),null,true),"Credenciales rechazadas por DTO login");
+                Check(row.Groups["rol"].Value==(email.StartsWith("admin@")?"admin":"cliente"),"Rol incorrecto");
+            }
+            var body=Regex.Replace(sql,@"--[^\n]*","");
+            Check(!Regex.IsMatch(body,@"\b(?:UPDATE|DELETE|TRUNCATE|DROP|ALTER)\b",RegexOptions.IgnoreCase),"La carga no debe modificar cuentas existentes ni el esquema");
+            Check(Regex.Matches(body,"WHERE NOT EXISTS").Count==2 && Regex.Matches(body,Regex.Escape("ON CONFLICT (email) DO NOTHING")).Count==2,"Faltan protecciones contra duplicados");
+            Check(body.Contains("BEGIN;") && body.Contains("COMMIT;") && body.Contains("pg_advisory_xact_lock"),"Falta transaccion/serializacion");
+            Console.WriteLine($"OK: {count} comprobaciones de usuarios de laboratorio y hashes; sin conexion ni ejecucion SQL.");return 0;
+        }
+        catch(Exception error){Console.Error.WriteLine("FALLO: "+error.Message);return 1;}
+    }
+}

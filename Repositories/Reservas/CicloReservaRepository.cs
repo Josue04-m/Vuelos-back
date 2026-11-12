@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Data.SqlClient;
 using Vuelos_Backend.Data;
 using Vuelos_Backend.Interface.Reservas;
 using Vuelos_Backend.Models.Reservas;
@@ -13,17 +12,17 @@ public sealed class CicloReservaRepository(AppDbContext context, TimeProvider cl
     public Task ExpirarPendientesAsync(int vueloId, DateTime ahoraUtc, bool forzar, CancellationToken ct) =>
         ExpirarEnContextoAsync(context, vueloId, ahoraUtc, forzar, ct);
 
-    // El llamador debe mantener el bloqueo UPDLOCK/HOLDLOCK del vuelo hasta confirmar la transacción.
+    // El llamador mantiene el bloqueo FOR UPDATE del vuelo hasta terminar la transacción.
     internal static async Task ExpirarEnContextoAsync(AppDbContext context, int vueloId, DateTime ahoraUtc, bool forzar, CancellationToken ct)
     {
         try { await ExpirarCoreAsync(context, vueloId, ahoraUtc, forzar, ct); }
+        catch (Exception ex) when (ErroresPostgreSql.EsConcurrencia(ex))
+        {
+            throw new ReservaOperacionException(ErrorReserva.Conflicto, "operacion_concurrente", "La liberación compitió con otra operación. Consulte el estado actual.");
+        }
         catch (DbUpdateConcurrencyException)
         {
             throw new ReservaOperacionException(ErrorReserva.Conflicto, "version_desactualizada", "La reserva cambió durante su liberación. Consulte el estado actual.");
-        }
-        catch (Exception ex) when ((ex as SqlException ?? ex.InnerException as SqlException)?.Number == 1205)
-        {
-            throw new ReservaOperacionException(ErrorReserva.Conflicto, "operacion_concurrente", "La liberación compitió con otra operación. Consulte el estado actual.");
         }
     }
 

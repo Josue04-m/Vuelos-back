@@ -1,0 +1,7 @@
+@baseUrl = https://TU-SERVICIO.onrender.com
+
+### Disponibilidad HTTP del proceso (no comprueba Supabase)
+GET {{baseUrl}}/health
+
+### Swagger, si Swagger__Habilitado=true
+GET {{baseUrl}}/swagger/v1/swagger.json

@@ -1,0 +1,10 @@
+{
+  "estado": "NO_EJECUTADA",
+  "ejecucion": "44043378CC",
+  "fechaUtc": "2026-11-11T17:07:41.052936+00:00",
+  "comprobaciones": 0,
+  "error": "falta_conexion_o_confirmacion_de_base_pruebas",
+  "baseReal": false,
+  "proveedorPago": "simulado_sin_HTTP",
+  "registrosNuevosSeConservan": true
+}

@@ -43,8 +43,8 @@ internal static class ImportacionAvionesChecks
     private static ImportarAvionesRequest Request(byte[] bytes,string file)=>new(){Archivo=new FormFile(new MemoryStream(bytes),0,bytes.Length,"archivo",file),PrimeraClaseId=1,SegundaClaseId=2,TerceraClaseId=3};
     private static async Task<MemoryCatalogosRepository> Repo()
     {
-        var r=new MemoryCatalogosRepository(); var service=new CatalogosAdminService(r,TimeProvider.System);
-        foreach(var name in new[]{"Primera Clase","Segunda Clase","Tercera Clase"})await service.GuardarCategoriaAsync(null,new(){Nombre=name},Ct);
+        var r=new MemoryCatalogosRepository();
+        foreach(var name in new[]{"Primera Clase","Segunda Clase","Tercera Clase"})await r.CrearAsync(new CategoriaAsiento {Nombre=name},Ct);
         return r;
     }
     private static async Task Error(Func<Task> action,string codigo)
@@ -68,7 +68,7 @@ internal static class ImportacionAvionesChecks
         var mixed=await service.ImportarAsync(Request(Header+Row+Row.Replace("EC-DEMO1","EC-DEMO2")),Ct);
         Check(mixed.Estado=="conflicto_matriculas" && repo.Created==before && mixed.Errores.Single().Fila==2,"duplicados parciales rechazan toda la carga");
         var avion=(await repo.ObtenerAsync<Avion>(imported.Filas[0].AvionId!.Value,Ct))!;
-        avion.Activo=false; await repo.ActualizarAsync(avion,Ct);
+        avion.Activo=false; await repo.ActualizarFixtureAsync(avion,Ct);
         Check((await service.ValidarAsync(Request(Header+Row),Ct)).Estado=="ya_importados","incluye matrículas inactivas");
 
         var clean=await Repo(); var parser=new ImportacionAvionesService(clean);
@@ -92,7 +92,7 @@ internal static class ImportacionAvionesChecks
         Check(invalidClasses.Errores.Any(e=>e.Campo=="clases"),"categorías no repetidas");
         invalidClasses=await parser.ValidarAsync(Request(Header+Row) with {TerceraClaseId=99},Ct);
         Check(invalidClasses.Errores.Any(e=>e.Mensaje.Contains("99")),"categoría inexistente");
-        var category=(await clean.ObtenerAsync<CategoriaAsiento>(3,Ct))!; category.Activo=false; await clean.ActualizarAsync(category,Ct);
+        var category=(await clean.ObtenerAsync<CategoriaAsiento>(3,Ct))!; category.Activo=false; await clean.ActualizarFixtureAsync(category,Ct);
         Check((await parser.ValidarAsync(Request(Header+Row),Ct)).Errores.Any(e=>e.Campo=="clases"),"categoría inactiva");
 
         var zero=await Repo(); var zeros=new ImportacionAvionesService(zero);
@@ -107,9 +107,9 @@ internal static class ImportacionAvionesChecks
         Check(attempts.Count(a=>a.Estado=="importado")==1 && attempts.Count(a=>a.Estado=="ya_importados")==1 && (await concurrent.BuscarAsync<Avion>(new(),Ct)).Total==1,"dos confirmaciones serializadas no duplican");
         var raceRepo=await Repo(); var raceService=new ImportacionAvionesService(raceRepo);
         Check((await raceService.ValidarAsync(Request(Header+Row),Ct)).PuedeImportar,"prevalidación disponible");
-        await new CatalogosAdminService(raceRepo,TimeProvider.System).CrearAvionAsync(new(){Modelo="Alta manual",Matricula="EC-DEMO1",CapacidadTotal=2,CategoriaId=1},Ct);
+        await raceRepo.CrearAsync(new Avion {Modelo="Existente",Matricula="EC-DEMO1",CapacidadTotal=2},Ct);
         Check((await raceService.ImportarAsync(Request(Header+Row),Ct)).Estado=="ya_importados","confirmación revalida matrícula creada después de vista previa");
-        await using var file=new FileStream("docs/planes.csv",FileMode.Open,FileAccess.Read,FileShare.ReadWrite);
+        await using var file=new FileStream(Path.Combine(PruebasModeloPostgreSql.Raiz,"docs/planes.csv"),FileMode.Open,FileAccess.Read,FileShare.ReadWrite);
         using var copy=new MemoryStream(); await file.CopyToAsync(copy);
         var real=await new ImportacionAvionesService(await Repo()).ValidarAsync(Request(copy.ToArray(),"planes.csv"),Ct);
         Check(real.PuedeImportar && real.TotalFilas>0 && real.TotalAsientos==real.Filas.Sum(f=>f.CapacidadTotal),"CSV del usuario valida sin importarlo en SQL");
@@ -131,23 +131,23 @@ internal static class ImportacionAvionesChecks
         var plane=(await repo.ObtenerAsync<Avion>(result.Filas[0].AvionId!.Value,Ct))!;
         Check(plane.Modelo=="Modelo Ā" && plane.Matricula=="EC-META1" && plane.CodigoIata=="AT4" && plane.CodigoIcao=="AT43","entidad recibe modelo Unicode y códigos completos");
         Check(plane.CantidadPrimeraClase==1 && plane.CantidadSegundaClase==2 && plane.CantidadTerceraClase==3 && plane.LetrasPorFila=="ABC" && plane.DatosOrigenJson==preview.Filas[0].DatosOrigenJson,"configuración de las tres clases y letras persistidas");
-        var admin=await new CatalogosAdminService(repo,TimeProvider.System).ObtenerAvionAsync(plane.AvionId,Ct);
+        var admin=await new CatalogosAdminService(repo).ObtenerAvionAsync(plane.AvionId,Ct);
         Check(admin.Metadatos is {CodigoIata:"AT4",CodigoIcao:"AT43",CantidadPrimeraClase:1,CantidadSegundaClase:2,CantidadTerceraClase:3,LetrasPorFila:"ABC"} && admin.Metadatos.DatosOrigenJson==plane.DatosOrigenJson,"GET devuelve metadatos del avión");
         var before=repo.Created;var repeated=await service.ImportarAsync(Request(Header+source),Ct);
         Check(repeated.Estado=="ya_importados" && repo.Created==before,"metadatos nuevos no habilitan duplicados ni sobrescrituras");
         var emptyRepo=await Repo();await new ImportacionAvionesService(emptyRepo).ImportarAsync(Request(Header+"Modelo;;;EC-EMPTY;1;0;0;1;\n"),Ct);
         var empty=(await emptyRepo.ObtenerAsync<Avion>(1,Ct))!;
         Check(empty.CodigoIata==null && empty.CodigoIcao==null && empty.LetrasPorFila=="" && empty.CantidadPrimeraClase==0,"códigos vacíos son NULL; cero asientos y letras vacías se conservan");
-        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused").Options);
         Check(!db.Database.HasPendingModelChanges(),"modelo de aviones coincide con snapshot");
-        var migrations=db.GetService<IMigrationsAssembly>();var entry=migrations.Migrations.Single(m=>m.Key.EndsWith("_AvionesDatosCompletos"));var migration=migrations.CreateMigration(entry.Value,db.Database.ProviderName!);
-        Check(migration.UpOperations.OfType<AddColumnOperation>().Count()==7 && migration.UpOperations.OfType<AddColumnOperation>().All(c=>c.IsNullable),"siete columnas nullable preservan registros anteriores");
-        Check(migration.UpOperations.OfType<AlterColumnOperation>().Single().ColumnType=="nvarchar(100)","modelo ampliado a Unicode");
-        Check(migration.UpOperations.OfType<AddCheckConstraintOperation>().Count()==2 && !migration.UpOperations.Any(o=>o is DropTableOperation or DropColumnOperation or UpdateDataOperation or DeleteDataOperation),"validación SQL de JSON y suma de clases; sin borrados");
-        Check(!migration.UpOperations.OfType<CreateIndexOperation>().Any(i=>i.IsUnique) && !migration.UpOperations.OfType<AddUniqueConstraintOperation>().Any(),"IATA e ICAO de modelo no son únicos por aeronave");
-        Check(migration.DownOperations.First() is SqlOperation guard && guard.Sql.Contains("THROW") && guard.Sql.Contains("datos_origen_json"),"Down protege metadatos y Unicode");
-        var sql=db.GetService<IMigrator>().GenerateScript("AeropuertosDatosCompletos","AvionesDatosCompletos");
-        Check(sql.Contains("[codigo_iata] nvarchar(3) NULL") && sql.Contains("CK_aviones_distribucion_importada") && sql.Contains("ISJSON") && !sql.Contains("DROP TABLE"),"SQL incremental generado sin ejecutar");
+        var migration=PruebasModeloPostgreSql.Inicial(db);var table=PruebasModeloPostgreSql.Tabla(migration,"aviones");
+        Check(new[]{"codigo_iata","codigo_icao","cantidad_primera_clase","cantidad_segunda_clase","cantidad_tercera_clase","letras_por_fila","datos_origen_json"}.All(n=>table.Columns.Single(c=>c.Name==n).IsNullable),"metadatos opcionales preservan historia");
+        Check(table.Columns.Single(c=>c.Name=="modelo").ColumnType=="character varying(100)","modelo Unicode PostgreSQL");
+        Check(table.CheckConstraints.Any(c=>c.Name=="CK_aviones_distribucion_importada") && table.CheckConstraints.Any(c=>c.Name=="CK_aviones_datos_origen_json") && !migration.UpOperations.Any(o=>o is DropTableOperation or DropColumnOperation or UpdateDataOperation or DeleteDataOperation),"JSON, distribucion e historia");
+        Check(!table.UniqueConstraints.Any(c=>c.Columns.Contains("codigo_iata")||c.Columns.Contains("codigo_icao")),"codigos de modelo compartidos por aeronaves");
+        Check(PruebasModeloPostgreSql.ProtegeDown(migration),"Down protege metadatos");
+        var sql=PruebasModeloPostgreSql.Sql(db);
+        Check(sql.Contains("codigo_iata character varying(3)") && sql.Contains("CK_aviones_distribucion_importada") && sql.Contains("json_typeof") && !sql.Contains("DROP TABLE"),"SQL PostgreSQL de aeronaves");
         Check(db.Database.GetDbConnection().State==System.Data.ConnectionState.Closed,"sin conexión a SQL Server");
     }
 

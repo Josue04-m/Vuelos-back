@@ -155,11 +155,10 @@ internal static class PayPalChecks
         Check(f.F.Pagos[0].Estado=="revision","consulta posterior no borra revisión de reembolso");
         await ClienteHttpChecks();
         await ApiHttpChecks();
-        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
-        var migrations=db.GetService<IMigrationsAssembly>(); var info=migrations.Migrations.Single(m=>m.Key.EndsWith("_PagosPayPal"));
-        var migration=migrations.CreateMigration(info.Value,db.Database.ProviderName!);
-        Check(migration.UpOperations.OfType<CreateTableOperation>().Count()==2 && !migration.UpOperations.Any(o=>o is DropTableOperation or AlterColumnOperation or UpdateDataOperation or DeleteDataOperation),"migración aditiva conserva historial");
-        Check(migration.UpOperations.OfType<CreateIndexOperation>().Count(i=>i.IsUnique)==3,"reserva, orden y captura únicas en SQL");
+        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused").Options);
+        var migration=PruebasModeloPostgreSql.Inicial(db);
+        Check(new[]{"pagos_paypal","eventos_paypal"}.All(n=>migration.UpOperations.OfType<CreateTableOperation>().Any(t=>t.Name==n)) && !migration.UpOperations.Any(o=>o is DropTableOperation or AlterColumnOperation or UpdateDataOperation or DeleteDataOperation), "tablas PayPal y eventos sin perdida de datos");
+        Check(migration.UpOperations.OfType<CreateIndexOperation>().Count(i=>i.Table=="pagos_paypal" && i.IsUnique)==3,"reserva, orden y captura unicas");
         Console.WriteLine($"OK: {count} comprobaciones PayPal con proveedor simulado; sin cobros ni SQL Server.");
     }
 

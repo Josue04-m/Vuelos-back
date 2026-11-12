@@ -58,7 +58,7 @@ internal static class ImportacionAeropuertosChecks
         Check((await service.ValidarAsync(Request(Header+Row.Replace("UIO"," uio ")),Ct)).Estado=="ya_importados","IATA normalizado");
         var mixed=await service.ImportarAsync(Request(csv+Row.Replace("UIO","CUE")),Ct);
         Check(mixed.Estado=="conflicto_codigos" && mixed.TotalExistentes==2 && mixed.AeropuertosImportados==0 && repo.Created==before,"parcialmente existentes bloquean toda escritura");
-        var old=(await repo.ObtenerAsync<Aeropuerto>(1,Ct))!;old.Activo=false;await repo.ActualizarAsync(old,Ct);
+        var old=(await repo.ObtenerAsync<Aeropuerto>(1,Ct))!;old.Activo=false;await repo.ActualizarFixtureAsync(old,Ct);
         Check((await service.ValidarAsync(Request(Header+Row),Ct)).Estado=="ya_importados","IATA de inactivo no se reutiliza");
 
         var clean=new MemoryCatalogosRepository();var parser=new ImportacionAeropuertosService(clean);
@@ -96,9 +96,9 @@ internal static class ImportacionAeropuertosChecks
         Check(attempts.Count(r=>r.Estado=="importado")==1 && attempts.Count(r=>r.Estado=="ya_importados")==1 && (await concurrent.BuscarAsync<Aeropuerto>(new(),Ct)).Total==2,"importaciones serializadas no duplican");
         var race=new MemoryCatalogosRepository();var rs=new ImportacionAeropuertosService(race);
         Check((await rs.ValidarAsync(Request(Header+Row),Ct)).PuedeImportar,"prevalidación antes de cambio");
-        await new CatalogosAdminService(race,TimeProvider.System).GuardarAeropuertoAsync(null,new(){CodigoIata="UIO",Nombre="Existente",Ciudad="Quito",Pais="Ecuador"},Ct);
+        await race.CrearAsync(new Aeropuerto {CodigoIata="UIO",Nombre="Existente",Ciudad="Quito",Pais="Ecuador"},Ct);
         Check((await rs.ImportarAsync(Request(Header+Row),Ct)).Estado=="ya_importados","confirmación revalida códigos después de vista previa");
-        await using var file=new FileStream("docs/airports.csv",FileMode.Open,FileAccess.Read,FileShare.ReadWrite);
+        await using var file=new FileStream(Path.Combine(PruebasModeloPostgreSql.Raiz,"docs/airports.csv"),FileMode.Open,FileAccess.Read,FileShare.ReadWrite);
         using var copy=new MemoryStream();await file.CopyToAsync(copy);var bytes=copy.ToArray();
         var actual=new ImportacionAeropuertosService(new MemoryCatalogosRepository());
         var actualBlocked=await actual.ValidarAsync(Request(bytes,"airports.csv"),Ct);
@@ -133,7 +133,7 @@ internal static class ImportacionAeropuertosChecks
         await service.ImportarAsync(Request(header+row),Ct);
         var stored=(await repo.ObtenerAsync<Aeropuerto>(1,Ct))!;
         Check(stored.AeropuertoId==1 && stored.IdOrigen==42 && stored.Latitud==m.Latitud && stored.Nombre=="Aeropuerto Ā Quito" && stored.DatosOrigenJson==m.DatosOrigenJson,"persistencia recibe campos completos y Unicode, conserva PK interna");
-        var response=await new CatalogosAdminService(repo,TimeProvider.System).ObtenerAeropuertoAsync(1,Ct);
+        var response=await new CatalogosAdminService(repo).ObtenerAeropuertoAsync(1,Ct);
         Check(response.Metadatos==m,"GET administrativo devuelve todos los metadatos persistidos");
         var future=await new ImportacionAeropuertosService(new MemoryCatalogosRepository()).ValidarAsync(Request(header.TrimEnd('\n')+",columna_futura\n"+row.TrimEnd('\n')+",dato extra\n"),Ct);
         using(var raw=JsonDocument.Parse(future.Filas.Single().Metadatos!.DatosOrigenJson!))Check(raw.RootElement.GetProperty("columna_futura").GetString()=="dato extra","columnas adicionales también conservadas en JSON");
@@ -144,15 +144,15 @@ internal static class ImportacionAeropuertosChecks
         }
         var nullable=await new ImportacionAeropuertosService(new MemoryCatalogosRepository()).ValidarAsync(Request(header+row.Replace("-0.1291667","").Replace("-78.3575","").Replace("7910","")),Ct);
         Check(nullable.PuedeImportar && nullable.Filas[0].Metadatos is {Latitud:null,Longitud:null,ElevacionPies:null},"ausencia de coordenadas no se convierte a cero");
-        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused").Options);
         Check(!db.Database.HasPendingModelChanges(),"snapshot de metadatos actualizado");
-        var migrations=db.GetService<IMigrationsAssembly>();var entry=migrations.Migrations.Single(p=>p.Key.EndsWith("_AeropuertosDatosCompletos"));var migration=migrations.CreateMigration(entry.Value,db.Database.ProviderName!);
-        Check(migration.UpOperations.OfType<AddColumnOperation>().Count()==16 && migration.UpOperations.OfType<AddColumnOperation>().All(c=>c.IsNullable),"16 columnas opcionales conservan registros anteriores");
-        Check(migration.UpOperations.OfType<AlterColumnOperation>().Count()==3 && migration.UpOperations.OfType<AlterColumnOperation>().All(c=>c.ColumnType?.StartsWith("nvarchar")==true),"nombres, ciudades y países ampliados a Unicode");
-        Check(migration.UpOperations.OfType<AddCheckConstraintOperation>().Count()==3 && !migration.UpOperations.Any(o=>o is DropTableOperation or DropColumnOperation or UpdateDataOperation or DeleteDataOperation),"coordenadas/JSON restringidos y sin borrado ni conversión de datos de negocio");
-        Check(migration.DownOperations.First() is SqlOperation guard && guard.Sql.Contains("THROW") && guard.Sql.Contains("datos_origen_json"),"Down bloquea pérdida de metadatos y Unicode");
-        var sql=db.GetService<IMigrator>().GenerateScript("PagosPayPal","AeropuertosDatosCompletos");
-        Check(sql.Contains("[latitud] float NULL") && sql.Contains("nvarchar(150)") && sql.Contains("ISJSON") && !sql.Contains("DROP TABLE"),"SQL incremental generado sin ejecutar y sin eliminar tablas");
+        var migration=PruebasModeloPostgreSql.Inicial(db);var table=PruebasModeloPostgreSql.Tabla(migration,"aeropuertos");
+        Check(new[]{"id_origen","identificador","tipo","latitud","longitud","elevacion_pies","continente","region_iso","servicio_regular","codigo_icao","codigo_gps","codigo_local","sitio_web","wikipedia","palabras_clave","datos_origen_json"}.All(n=>table.Columns.Single(c=>c.Name==n).IsNullable),"16 metadatos opcionales preservan historia");
+        Check(new[]{"nombre","ciudad","pais"}.All(n=>table.Columns.Single(c=>c.Name==n).ColumnType!.StartsWith("character varying")),"nombres, ciudades y paises Unicode");
+        Check(new[]{"CK_aeropuertos_latitud","CK_aeropuertos_longitud","CK_aeropuertos_datos_origen_json"}.All(n=>table.CheckConstraints.Any(c=>c.Name==n)) && !migration.UpOperations.Any(o=>o is DropTableOperation or DropColumnOperation or UpdateDataOperation or DeleteDataOperation),"coordenadas, JSON e historia");
+        Check(PruebasModeloPostgreSql.ProtegeDown(migration),"Down protege metadatos");
+        var sql=PruebasModeloPostgreSql.Sql(db);
+        Check(sql.Contains("latitud double precision") && sql.Contains("character varying(150)") && sql.Contains("json_typeof") && !sql.Contains("DROP TABLE"),"SQL PostgreSQL de aeropuertos");
         Check(db.Database.GetDbConnection().State==System.Data.ConnectionState.Closed,"verificación no abre SQL Server");
     }
 

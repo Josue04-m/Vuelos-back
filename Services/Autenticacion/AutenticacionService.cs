@@ -1,4 +1,4 @@
-using System.Data.SqlTypes;
+using Vuelos_Backend.Data;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
@@ -30,10 +30,9 @@ public sealed class AutenticacionService(
         if (resultado == PasswordVerificationResult.SuccessRehashNeeded)
             usuario.PasswordHash = passwordHasher.HashPassword(usuario, request.Password);
 
-        // DATETIME redondea a 1/300 s: devolver exactamente la expiración persistida.
-        var ahoraUtc = new SqlDateTime(clock.GetUtcNow().UtcDateTime).Value;
-        var expiracionUtc = new SqlDateTime(
-            ahoraUtc.AddMinutes(opciones.Value.DuracionTokenMinutos)).Value;
+        var ahoraUtc = FechasPostgreSql.Normalizar(clock.GetUtcNow().UtcDateTime);
+        var expiracionUtc = FechasPostgreSql.Normalizar(
+            ahoraUtc.AddMinutes(opciones.Value.DuracionTokenMinutos));
         var sesion = new TokenSesion
         {
             UsuarioId = usuario.UsuarioId,

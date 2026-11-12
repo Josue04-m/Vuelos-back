@@ -1,5 +1,4 @@
 using System.Data;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vuelos_Backend.Data;
@@ -28,8 +27,7 @@ public sealed class VueloAdminRepository(AppDbContext context) : IVueloAdminRepo
     public Task<Avion?> BloquearAvionAsync(int avionId, CancellationToken cancellationToken)
     {
         ExigirTransaccion();
-        return EjecutarAsync(() => context.Aviones.FromSqlInterpolated(
-            $"SELECT * FROM [dbo].[aviones] WITH (UPDLOCK, HOLDLOCK) WHERE [avion_id] = {avionId}")
+        return EjecutarAsync(() => ConsultasBloqueoPostgreSql.Avion(context, avionId)
             .SingleOrDefaultAsync(cancellationToken));
     }
 
@@ -41,8 +39,7 @@ public sealed class VueloAdminRepository(AppDbContext context) : IVueloAdminRepo
     {
         if (bloquear) ExigirTransaccion();
         var query = bloquear
-            ? context.Vuelos.FromSqlInterpolated(
-                $"SELECT * FROM [dbo].[vuelos] WITH (UPDLOCK, HOLDLOCK) WHERE [vuelo_id] = {vueloId}")
+            ? ConsultasBloqueoPostgreSql.Vuelo(context, vueloId)
             : context.Vuelos.AsNoTracking().Where(v => v.VueloId == vueloId);
         return EjecutarAsync(() => query.Include(v => v.Avion).Include(v => v.AeropuertoOrigen)
             .Include(v => v.AeropuertoDestino).SingleOrDefaultAsync(cancellationToken));
@@ -54,8 +51,7 @@ public sealed class VueloAdminRepository(AppDbContext context) : IVueloAdminRepo
     public async Task<IReadOnlyList<AsientoFisico>> ObtenerAsientosFisicosAsync(int avionId, CancellationToken cancellationToken)
     {
         ExigirTransaccion();
-        return await EjecutarAsync(() => context.AsientosFisicos.FromSqlInterpolated(
-            $"SELECT * FROM [dbo].[asientos_fisicos] WITH (HOLDLOCK) WHERE [avion_id] = {avionId}")
+        return await EjecutarAsync(() => ConsultasBloqueoPostgreSql.AsientosFisicos(context, avionId)
             .AsNoTracking().Where(a => a.Activo && a.Categoria.Activo).OrderBy(a => a.AsientoFisicoId).ToListAsync(cancellationToken));
     }
 
@@ -200,8 +196,7 @@ public sealed class VueloAdminRepository(AppDbContext context) : IVueloAdminRepo
     {
         if (bloquear) ExigirTransaccion();
         var query = bloquear
-            ? context.AsientosVuelo.FromSqlInterpolated(
-                $"SELECT * FROM [dbo].[asientos_vuelo] WITH (UPDLOCK, HOLDLOCK) WHERE [asiento_vuelo_id] = {asientoVueloId} AND [vuelo_id] = {vueloId}")
+            ? ConsultasBloqueoPostgreSql.AsientoVuelo(context, asientoVueloId, vueloId)
             : context.AsientosVuelo.AsNoTracking().Where(a => a.AsientoVueloId == asientoVueloId && a.VueloId == vueloId);
         return EjecutarAsync(() => query.Where(a => a.AsientoFisico.AvionId == a.Vuelo.AvionId)
             .Include(a => a.AsientoFisico)
@@ -256,7 +251,7 @@ public sealed class VueloAdminRepository(AppDbContext context) : IVueloAdminRepo
         {
             throw Conflicto("La información cambió. Consulte el vuelo o asiento e intente nuevamente.");
         }
-        catch (Exception ex) when ((ex as SqlException ?? ex.InnerException as SqlException)?.Number is 1205 or 1222 or 51001 or 2601 or 2627 or 547)
+        catch (Exception ex) when (ErroresPostgreSql.EsConflicto(ex))
         {
             throw Conflicto("La operación compite con otro cambio o sus referencias ya no están disponibles. Consulte los datos actuales.");
         }

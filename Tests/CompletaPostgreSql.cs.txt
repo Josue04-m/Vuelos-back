@@ -1,0 +1,23 @@
+using System;
+using System.Threading.Tasks;
+
+internal static class CompletaPostgreSql
+{
+    public static async Task<int> Main()
+    {
+        try
+        {
+            await Checks.Main();
+            ModeloPostgreSql.Main();
+            MigracionPostgreSql.Main();
+            await PersistenciaPostgreSql.RunAsync(incluirRegresiones: false);
+            Console.WriteLine("OK: suite completa PostgreSQL offline. HTTP local, repositorios/proveedor de pago simulados; sin base ni cobros reales.");
+            return 0;
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine("FALLO de regresión: " + error.Message);
+            return 1;
+        }
+    }
+}

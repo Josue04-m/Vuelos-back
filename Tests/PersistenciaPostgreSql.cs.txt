@@ -1,0 +1,230 @@
+using System;
+using System.Data;
+using System.Linq;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Options;
+using Npgsql;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Interface.Autenticacion;
+using Vuelos_Backend.Interface.Usuarios;
+using Vuelos_Backend.Models.Autenticacion;
+using Vuelos_Backend.Models.Autenticacion.DTOs;
+using Vuelos_Backend.Models.Catalogos;
+using Vuelos_Backend.Models.Catalogos.DTOs;
+using Vuelos_Backend.Models.Common;
+using Vuelos_Backend.Models.Reservas;
+using Vuelos_Backend.Models.Usuarios;
+using Vuelos_Backend.Models.Vuelos;
+using Vuelos_Backend.Models.Vuelos.DTOs;
+using Vuelos_Backend.Repositories.Catalogos;
+using Vuelos_Backend.Repositories.Reservas;
+using Vuelos_Backend.Repositories.Usuarios;
+using Vuelos_Backend.Repositories.Vuelos;
+using Vuelos_Backend.Services.Autenticacion;
+using Vuelos_Backend.Services.Vuelos;
+
+internal static class PersistenciaPostgreSql
+{
+    private static int checks;
+    private static readonly CancellationToken Ct = CancellationToken.None;
+    private static void Check(bool value, string message) { if (!value) throw new Exception(message); checks++; }
+    private static Type Internal(string name) => typeof(AppDbContext).Assembly.GetType(name, true)!;
+    private static object? Call(Type type, string method, params object[] args) => type
+        .GetMethod(method, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!.Invoke(null, args);
+    private static AppDbContext Db(params IInterceptor[] interceptors) => new(new DbContextOptionsBuilder<AppDbContext>()
+        .UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused")
+        .AddInterceptors(interceptors).Options);
+    private static PostgresException Pg(string state, string? constraint = null) =>
+        new("mensaje sin nombres ni detalles", "ERROR", "ERROR", state, constraintName: constraint);
+
+    public static Task Main() => RunAsync();
+
+    public static async Task RunAsync(bool incluirRegresiones = true)
+    {
+        Queries();
+        await Guards();
+        await Errors();
+        await Dates();
+        await Payments();
+        if (incluirRegresiones)
+        {
+            await DescuentosPasajerosChecks.RunAsync();
+            await CorsChecks.RunAsync();
+            await SwaggerFlujoChecks.RunAsync();
+        }
+        Console.WriteLine($"OK: {checks} comprobaciones de persistencia PostgreSQL, fechas y pagos simulados; sin conexión a base ni cobros.");
+    }
+
+    private static void Queries()
+    {
+        using var db = Db();
+        var type = Internal("Vuelos_Backend.Data.ConsultasBloqueoPostgreSql");
+        foreach (var (name, args, suffix) in new[] {
+            ("Vuelo", new object[]{db,7}, "FOR UPDATE OF v"),
+            ("ReservaPropia", new object[]{db,7,19}, "FOR UPDATE OF r"),
+            ("Avion", new object[]{db,7}, "FOR UPDATE OF a"),
+            ("AsientosFisicos", new object[]{db,7}, "FOR SHARE OF f"),
+            ("AsientoVuelo", new object[]{db,7,9}, "FOR UPDATE OF a") })
+        {
+            var sql = ((IQueryable)Call(type, name, args)!).ToQueryString();
+            Check(sql.Contains(suffix) && sql.Contains("pna.") && !sql.Contains("[dbo]"), "Bloqueo PostgreSQL " + name);
+            Check(sql.Contains("@p0"), "ID no parametrizado: " + name);
+        }
+        var repo = new ReservaRepository(db);
+        var locked = (IQueryable)typeof(ReservaRepository).GetMethod("ConsultaVueloBloqueado",BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(repo,new object[]{7})!;
+        var joined = locked.ToQueryString();
+        Check(joined.IndexOf("FOR UPDATE OF v",StringComparison.Ordinal) < joined.IndexOf("JOIN",StringComparison.Ordinal), "Lock aplicado al JOIN exterior");
+        var own = (IQueryable)typeof(ReservaRepository).GetMethod("ConsultaReservaBloqueada",BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(repo,new object[]{7,19})!;
+        Check(own.ToQueryString().Contains("r.usuario_id = @p1"), "Falta propietario en bloqueo");
+        var seats = (IQueryable)typeof(ReservaRepository).GetMethod("ConsultaAsientoVersionado",BindingFlags.Instance|BindingFlags.NonPublic)!
+            .Invoke(repo,new object[]{1,2,"disponible",new byte[8]})!;
+        Check(seats.ToQueryString().Contains("row_version") && seats.ToQueryString().Contains("avion_id"), "UPDATE de asiento pierde versión o avión");
+        var catalogs = new CatalogosAdminRepository(db);
+        var catalogQuery = (IQueryable)typeof(CatalogosAdminRepository).GetMethod("Consulta",BindingFlags.Instance|BindingFlags.NonPublic)!
+            .MakeGenericMethod(typeof(Vuelos_Backend.Models.Aviones.Avion)).Invoke(catalogs,new object[]{new FiltroCatalogoRequest{Buscar="a%_!"}})!;
+        Check(catalogQuery.ToQueryString().Contains("ILIKE") && catalogQuery.ToQueryString().Contains("ESCAPE '!'"), "Búsqueda administrativa no literal");
+        var search = new BusquedaCatalogosRepository(db);
+        foreach (var name in new[]{"ConsultaAeropuertos","ConsultaAviones"})
+        {
+            var query = (IQueryable)typeof(BusquedaCatalogosRepository).GetMethod(name,BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(search,new object[]{"gYe %_!",8})!;
+            var sql = query.ToQueryString();
+            Check(sql.Contains("ILIKE") && sql.Contains("!%!_!!"), "Patrón literal en " + name);
+            Check(!sql.Contains("datos_origen_json") && sql.Contains("LIMIT"), "Catálogo ligero/paginado " + name);
+        }
+        Check(db.Database.GetDbConnection().State == ConnectionState.Closed, "Las traducciones abrieron conexión");
+    }
+
+    private static ReservaOperacionException? Translate(Exception error) => (ReservaOperacionException?)Call(
+        typeof(ReservaRepository), "TraducirConflicto", error);
+
+    private static async Task Guards()
+    {
+        using var db=Db();var reserve=new ReservaRepository(db);var flights=new VueloAdminRepository(db);var catalogs=new CatalogosAdminRepository(db);
+        foreach(var action in new Func<Task>[] {
+            ()=>reserve.BloquearVueloAsync(1,Ct), ()=>reserve.BloquearPropiaAsync(1,1,Ct),
+            ()=>reserve.CambiarEstadoAsientoAsync(1,1,"disponible","reservado",new byte[8],Ct), ()=>reserve.GuardarAsync(Ct),
+            ()=>flights.BloquearAvionAsync(1,Ct), ()=>flights.ObtenerAsync(1,true,Ct),
+            ()=>flights.ObtenerAsientosFisicosAsync(1,Ct), ()=>flights.ObtenerAsientoVueloAsync(1,1,true,Ct),
+            ()=>catalogs.CrearAsientosAsync(Array.Empty<Vuelos_Backend.Models.Asientos.AsientoFisico>(),Ct),
+            ()=>catalogs.CrearAsync(new Vuelos_Backend.Models.Aviones.Avion(),Ct) })
+        {
+            var rejected=false;
+            try{await action();}catch(InvalidOperationException){rejected=true;}
+            Check(rejected,"Escritura o lock sin transacción");
+        }
+        Check(db.Database.GetDbConnection().State==ConnectionState.Closed,"Guards abrieron conexión");
+    }
+
+    private static async Task Errors()
+    {
+        foreach (var state in new[]{"40P01","40001","55P03"})
+            Check(Translate(new DbUpdateException("wrapper",Pg(state)))?.Codigo == "operacion_concurrente", "SQLSTATE concurrencia " + state);
+        Check(Translate(new DbUpdateConcurrencyException())?.Codigo == "version_desactualizada", "Concurrencia EF");
+        Check(Translate(new DbUpdateException("wrapper",Pg("23505","UX_detalle_reservas_asiento_activo")))?.Codigo == "asiento_no_disponible", "Unique asiento por ConstraintName");
+        Check(Translate(Pg("23505","UQ_reservas_codigo_reserva"))?.Codigo == "codigo_reserva_ocupado", "Unique código reserva");
+        foreach(var state in new[]{"23503","23514","23P01","23505"})
+            Check(Translate(Pg(state))?.Codigo == "conflicto_reserva", "Integridad " + state);
+        foreach(var error in new Exception[]{Pg("57014"),Pg("08006"),new TimeoutException(),new OperationCanceledException(),new NpgsqlException("red",new System.IO.IOException())})
+            Check(Translate(error) == null, "Fallo de red/cancelación mal convertido a conflicto");
+        foreach(var type in new[]{typeof(CatalogosAdminRepository),typeof(VueloAdminRepository)})
+        {
+            var method = type.GetMethod(type == typeof(CatalogosAdminRepository)?"Ejecutar":"EjecutarAsync",BindingFlags.Static|BindingFlags.NonPublic)!.MakeGenericMethod(typeof(int));
+            try { await (Task<int>)method.Invoke(null,new object[]{(Func<Task<int>>)(()=>Task.FromException<int>(new DbUpdateException("wrapper",Pg("55P03"))))})!; throw new Exception("Falta rechazo del lock"); }
+            catch(CatalogoOperacionException e){Check(e.Codigo=="conflicto_catalogo","Error catálogo");}
+            catch(VueloAdminOperacionException e){Check(e.Codigo=="conflicto_vuelo","Error vuelo");}
+        }
+        using var db = Db(new SaveProbe(new DbUpdateException("wrapper",Pg("23505","UQ_usuarios_email"))));
+        try { await new UsuarioRepository(db).CrearAsync(User(),Ct); throw new Exception("Falta correo duplicado"); }
+        catch(CorreoDuplicadoException){Check(!db.ChangeTracker.Entries().Any(),"Registro fallido permanece tracked");}
+        Check(db.Database.GetDbConnection().State == ConnectionState.Closed,"Prueba de error abrió conexión");
+    }
+
+    private static Usuario User() => new(){UsuarioId=1,Nombre="Prueba",Apellido="Prueba",Email="prueba@example.invalid",PasswordHash="fake",Rol="cliente",FechaCreacion=DateTime.UtcNow.AddTicks(7)};
+    private static async Task Dates()
+    {
+        using var db = Db(new SaveProbe());
+        var user = User(); db.Usuarios.Add(user); await db.SaveChangesAsync(Ct);
+        Check(user.FechaCreacion.Kind == DateTimeKind.Utc && user.FechaCreacion.Ticks%10==0,"Guardar UTC/microsegundos");
+        db.ChangeTracker.Clear();
+        var sync=User();db.Usuarios.Add(sync);db.SaveChanges();
+        Check(sync.FechaCreacion.Ticks%10==0,"Guardar síncrono no normaliza");db.ChangeTracker.Clear();
+        var historical=User(); historical.FechaCreacion=DateTime.SpecifyKind(historical.FechaCreacion,DateTimeKind.Unspecified);
+        db.Attach(historical); historical.Nombre="Otro"; await db.SaveChangesAsync(Ct);
+        Check(historical.FechaCreacion.Kind == DateTimeKind.Unspecified,"Se reinterpretó fecha histórica sin modificar");
+        db.Entry(historical).Property(x=>x.FechaCreacion).IsModified=true;
+        try{await db.SaveChangesAsync(Ct);throw new Exception("Acepta fecha sin zona");}catch(InvalidOperationException){Check(true,"Rechaza fecha modificada sin UTC");}
+        db.ChangeTracker.Clear();
+        var credentials = new LoginStore(); var clock=new TickClock();
+        var loginService=new AutenticacionService(credentials,credentials,new PasswordHasher<Usuario>(),Options.Create(new OpcionesSesion{DuracionTokenMinutos=60}),clock);
+        var login=await loginService.LoginAsync(new LoginRequest{Email=credentials.Account.Email,Password="solo-prueba"},Ct);
+        Check(login != null && credentials.Session!.FechaExpiracion.Ticks%10==0 && login.FechaExpiracion.UtcDateTime==credentials.Session.FechaExpiracion,"Login responde expiración exacta");
+        var repo=new MemoryRepo();var service=new VueloAdminService(repo,clock);
+        var start=clock.GetUtcNow().AddDays(2);
+        var request=new CrearVueloAdminRequest{NumeroVuelo="PN001",AvionId=1,AeropuertoOrigenId=1,AeropuertoDestinoId=2,SalidaProgramada=start,LlegadaProgramada=start.AddHours(2),TarifasPorClase=[new(){CategoriaId=1,Precio=100},new(){CategoriaId=2,Precio=80}]};
+        var created=await service.CrearAsync(request,17,Ct);
+        Check(repo.Current!.SalidaProgramada.Ticks%10==0 && (await service.ObtenerAsync(1,Ct)).Version==created.Version,"Huella tras crear es estable");
+        var edited=await service.EditarAsync(1,new(){NumeroVuelo="PN002",AeropuertoOrigenId=1,AeropuertoDestinoId=2,SalidaProgramada=start.AddDays(1),LlegadaProgramada=start.AddDays(1).AddHours(2),Version=created.Version},Ct);
+        Check((await service.ObtenerAsync(1,Ct)).Version==edited.Version,"Huella tras editar es estable");
+        try{await service.CrearAsync(request with {LlegadaProgramada=start.AddTicks(1)},17,Ct);throw new Exception("Acepta intervalo inferior a microsegundo");}
+        catch(VueloAdminOperacionException e){Check(e.Error==ErrorVueloAdmin.SolicitudInvalida,"Valida precisión de intervalo antes de guardar");}
+        Check(db.Database.GetDbConnection().State == ConnectionState.Closed,"Fechas abrieron conexión");
+    }
+
+    private static async Task Payments()
+    {
+        var f=new PayPalFixture(); await f.Crear();
+        var paid=await Task.WhenAll(f.Service.CapturarAsync(1,1,Ct),f.Service.CapturarAsync(1,1,Ct));
+        Check(paid.All(p=>p.EstadoReserva=="pagada") && f.Provider.Capturas==1,"Captura concurrente única con repositorio simulado");
+        Check(f.F.Historial.Count(h=>h.TipoAccion=="PAGO_PAYPAL")==1,"Historial de pago único");
+        var pending=new PayPalFixture();await pending.Crear();pending.Provider.Pendiente=true;
+        var wait=await pending.Service.CapturarAsync(1,1,Ct);pending.F.Clock.Advance(TimeSpan.FromHours(13));await pending.F.Expiry.ExpirarLoteAsync(null,Ct);
+        Check(wait.Estado=="pendiente" && pending.F.Asientos[0].Estado=="reservado","Expiración no libera pago protegido");
+        pending.Provider.Completada=true;await pending.Service.ConciliarAsync(wait.PagoId,Ct);
+        Check(pending.F.Reservas[0].Estado=="pagada" && pending.Provider.Capturas==1,"Conciliación no recobra");
+        var uncertain=new PayPalFixture();await uncertain.Crear();uncertain.Provider.FallarCaptura=true;
+        try{await uncertain.Service.CapturarAsync(1,1,Ct);throw new Exception("Falta captura incierta");}
+        catch(ReservaOperacionException e){Check(e.Codigo=="captura_incierta","Código de captura incierta");}
+        Check(uncertain.F.Pagos[0].BloqueaReserva,"Timeout pierde protección durable");
+        var recovered=await uncertain.Service.ConsultarAsync(1,1,Ct);
+        Check(recovered.Estado=="completado" && uncertain.Provider.Capturas==1,"GET recupera sin otra captura");
+        try{await f.Service.ConsultarAsync(2,1,Ct);throw new Exception("Otro usuario ve el pago");}
+        catch(ReservaOperacionException e){Check(e.Codigo=="pago_no_encontrado","Propiedad del pago");}
+        var reserve=new EstadoReservasPrueba();var hold=await reserve.Service.CrearAsync(1,reserve.Request(1),Ct);
+        await reserve.Service.CancelarAsync(1,hold.ReservaId,new(){RowVersion=hold.RowVersion},Ct);
+        Check(reserve.Asientos[0].Estado=="disponible","Cancelación libera sin pago");
+    }
+
+    private sealed class SaveProbe(Exception? failure=null) : SaveChangesInterceptor
+    {
+        public override InterceptionResult<int> SavingChanges(DbContextEventData data,InterceptionResult<int> result)
+        {
+            if(failure != null)throw failure;
+            return InterceptionResult<int>.SuppressWithResult(1);
+        }
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData data,InterceptionResult<int> result,CancellationToken ct=default)
+        {
+            if(failure != null)throw failure;
+            return ValueTask.FromResult(InterceptionResult<int>.SuppressWithResult(1));
+        }
+    }
+    private sealed class TickClock : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow()=>new(new DateTime(2030,1,1,0,0,0,DateTimeKind.Utc).AddTicks(7));
+    }
+    private sealed class LoginStore : IUsuarioRepository,ITokenRepository
+    {
+        public Usuario Account=User(); public TokenSesion? Session;
+        public LoginStore(){Account.PasswordHash=new PasswordHasher<Usuario>().HashPassword(Account,"solo-prueba");}
+        public Task<Usuario?> BuscarPorCorreoAsync(string email,CancellationToken ct)=>Task.FromResult<Usuario?>(Account);
+        public Task<bool> ExisteCorreoAsync(string email,CancellationToken ct)=>Task.FromResult(true);
+        public Task CrearAsync(Usuario user,CancellationToken ct)=>throw new NotSupportedException();
+        public Task CrearAsync(TokenSesion session,CancellationToken ct){Session=session;return Task.CompletedTask;}
+        public Task<TokenSesion?> BuscarVigenteAsync(string token,DateTime date,CancellationToken ct)=>Task.FromResult(Session);
+        public Task RevocarAsync(int id,int user,CancellationToken ct)=>Task.CompletedTask;
+    }
+}
