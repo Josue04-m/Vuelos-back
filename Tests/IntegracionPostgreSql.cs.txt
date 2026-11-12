@@ -1,0 +1,279 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Data;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Npgsql;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Interface.Pagos;
+using Vuelos_Backend.Models.Autenticacion;
+using Vuelos_Backend.Models.Catalogos.DTOs;
+using Vuelos_Backend.Models.Pagos;
+using Vuelos_Backend.Models.Reservas;
+using Vuelos_Backend.Models.Reservas.DTOs;
+using Vuelos_Backend.Models.Usuarios;
+using Vuelos_Backend.Models.Vuelos.DTOs;
+using Vuelos_Backend.Repositories.Autenticacion;
+using Vuelos_Backend.Repositories.Catalogos;
+using Vuelos_Backend.Repositories.Pagos;
+using Vuelos_Backend.Repositories.Reservas;
+using Vuelos_Backend.Repositories.Usuarios;
+using Vuelos_Backend.Repositories.Vuelos;
+using Vuelos_Backend.Services.Autenticacion;
+using Vuelos_Backend.Services.Catalogos;
+using Vuelos_Backend.Services.Pagos;
+using Vuelos_Backend.Services.Reservas;
+using Vuelos_Backend.Services.Usuarios;
+using Vuelos_Backend.Services.Vuelos;
+
+// Integración opt-in: base ya migrada, LOGIN runtime de pruebas, sin DDL ni borrados.
+// Nunca se usan las credenciales reales PayPal ni se realiza HTTP a ese proveedor.
+internal static class IntegracionPostgreSql
+{
+    private static string connection="";
+    private static readonly string run=Guid.NewGuid().ToString("N")[..10].ToUpperInvariant();
+    private static readonly Clock clock=new();
+    private static int checks;
+    private static bool databaseOpened;
+    private static CancellationToken ct;
+    private static void Check(bool ok,string label){if(!ok)throw new Failure(label);Interlocked.Increment(ref checks);}
+    private static AppDbContext Db()=>new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connection,
+        o=>o.MigrationsHistoryTable("__EFMigrationsHistory","pna")).Options);
+    private static string ReportPath=>Path.Combine(Path.GetDirectoryName(typeof(IntegracionPostgreSql).Assembly.Location)!,"IntegracionPostgreSql.resultado.json");
+    private static void Report(string status,string? error=null)=>File.WriteAllText(ReportPath,JsonSerializer.Serialize(new {
+        estado=status,ejecucion=run,fechaUtc=DateTimeOffset.UtcNow,comprobaciones=checks,error,
+        baseReal=databaseOpened,proveedorPago="simulado_sin_HTTP",registrosNuevosSeConservan=true
+    },new JsonSerializerOptions{WriteIndented=true}));
+
+    public static async Task<int> Main()
+    {
+        var supplied=Environment.GetEnvironmentVariable("PNA_TEST_CONNECTION");
+        if(string.IsNullOrWhiteSpace(supplied)||Environment.GetEnvironmentVariable("PNA_TESTS_CONFIRM")!="BASE_DE_PRUEBAS")
+        {
+            Report("NO_EJECUTADA","falta_conexion_o_confirmacion_de_base_pruebas");
+            Console.WriteLine("NO EJECUTADA: configurar PNA_TEST_CONNECTION y PNA_TESTS_CONFIRM=BASE_DE_PRUEBAS. No se abrió ninguna conexión.");
+            return 2;
+        }
+        using var timeout=new CancellationTokenSource(TimeSpan.FromMinutes(4));ct=timeout.Token;
+        try
+        {
+            var builder=new NpgsqlConnectionStringBuilder(supplied){Timeout=10,CommandTimeout=20};
+            Check(builder.SslMode==SslMode.VerifyFull,"tls_debe_validar_servidor");connection=builder.ConnectionString;
+            await Preflight();
+            var fixture=await Prepare();
+            await Authentication(fixture);
+            await VersionsAndRaces(fixture);
+            await ReservationAndPayments(fixture);
+            Report("APROBADA");
+            Console.WriteLine($"OK: {checks} comprobaciones contra PostgreSQL. Ejecución LAB-{run}; datos de laboratorio conservados. Pago simulado, no PayPal Sandbox real.");
+            return 0;
+        }
+        catch(Exception error)
+        {
+            // No imprimir mensajes del driver, detalles SQL, passwords, tokens ni conexiones.
+            var code=error is Failure ? error.Message : error is PostgresException pg ? "postgres_"+pg.SqlState : error.GetType().Name;
+            Report("FALLIDA",code);Console.Error.WriteLine($"FALLO {code}; ejecución LAB-{run}. Revisar sus datos de laboratorio antes de repetir.");return 1;
+        }
+    }
+
+    private static async Task<T> Scalar<T>(AppDbContext db,string sql)
+    {
+        if(db.Database.GetDbConnection().State!=ConnectionState.Open)await db.Database.OpenConnectionAsync(ct);
+        databaseOpened=true;
+        await using var command=db.Database.GetDbConnection().CreateCommand();command.CommandText=sql;
+        var value=await command.ExecuteScalarAsync(ct);return (T)Convert.ChangeType(value!,typeof(T));
+    }
+    private static async Task Preflight()
+    {
+        await using var db=Db();
+        Check(await Scalar<long>(db,"SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname='pna' AND tablename <> '__EFMigrationsHistory'")==15,"esquema_no_preparado");
+        Check(await Scalar<long>(db,"SELECT count(*) FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid WHERE n.nspname='pna' AND NOT t.tgisinternal AND p.proname='generar_version_fila' AND t.tgenabled='O'")==7,"triggers_no_preparados");
+        Check(!await Scalar<bool>(db,"SELECT has_schema_privilege(current_user,'pna','CREATE')"),"conexion_no_es_runtime_restringido");
+        Check(!await Scalar<bool>(db,"SELECT has_table_privilege(current_user,'pna.reservas','DELETE') OR has_table_privilege(current_user,'pna.reservas','TRUNCATE') OR has_table_privilege(current_user,'pna.\"__EFMigrationsHistory\"','UPDATE')"),"runtime_con_permisos_excesivos");
+        Check(await Scalar<bool>(db,"SELECT has_table_privilege(current_user,'pna.reservas','INSERT') AND has_table_privilege(current_user,'pna.reservas','UPDATE') AND has_sequence_privilege(current_user,'pna.row_version_seq','USAGE') AND has_function_privilege(current_user,'pna.generar_version_fila()','EXECUTE')"),"runtime_sin_permisos_necesarios");
+        await using var second=Db();await second.Database.OpenConnectionAsync(ct);
+        Check(((NpgsqlConnection)db.Database.GetDbConnection()).ProcessID!=((NpgsqlConnection)second.Database.GetDbConnection()).ProcessID,"faltan_conexiones_independientes");
+    }
+
+    private sealed record Fixture(int Admin,int A,int B,string Email,string Password,int Plane,int Origin,int Destination,int Flight,int[] Seats,int[] Classes);
+    private static IFormFile Csv(string value,string filename)
+    {
+        var data=Encoding.UTF8.GetBytes(value);return new FormFile(new MemoryStream(data),0,data.Length,"archivo",filename);
+    }
+    private static string Code()=>new(Enumerable.Range(0,3).Select(_=>(char)('A'+RandomNumberGenerator.GetInt32(26))).ToArray());
+    private static async Task<Fixture> Prepare()
+    {
+        await using var db=Db();
+        var names=new[]{"Primera Clase","Segunda Clase","Tercera Clase"};
+        var categories=await db.CategoriasAsiento.AsNoTracking().Where(c=>c.Activo && names.Contains(c.Nombre)).ToListAsync(ct);
+        Check(categories.Count==3 && categories.All(c=>c.RowVersion.Length==8),"catalogo_clases_incompleto");
+        var ids=names.Select(n=>categories.Single(c=>c.Nombre==n).CategoriaId).ToArray();
+        var used=await db.Aeropuertos.Select(a=>a.CodigoIata).ToListAsync(ct);var origin=Code();while(used.Contains(origin))origin=Code();
+        var destination=Code();while(used.Contains(destination)||destination==origin)destination=Code();
+        var airports=new ImportacionAeropuertosService(new CatalogosAdminRepository(db));
+        ImportarAeropuertosRequest AirportRequest()=>new(){Archivo=Csv($"type,name,municipality,iso_country,iata_code,scheduled_service\nlarge_airport,LAB {run} Origen Ñ,Prueba,EC,{origin},yes\nlarge_airport,LAB {run} Destino,Prueba,EC,{destination},yes\n","airports.csv")};
+        var imported=await airports.ImportarAsync(AirportRequest(),ct);
+        Check(imported.Estado=="importado" && imported.AeropuertosImportados==2,"importacion_aeropuertos");
+        Check((await airports.ImportarAsync(AirportRequest(),ct)).Estado=="ya_importados","duplicado_aeropuertos");
+        var a=imported.Filas.Single(f=>f.CodigoIata==origin).AeropuertoId!.Value;var b=imported.Filas.Single(f=>f.CodigoIata==destination).AeropuertoId!.Value;
+        var search=new BusquedaCatalogosRepository(db);
+        Check((await search.BuscarAeropuertosAsync("lab "+run.ToLowerInvariant()+" origen ñ",10,ct)).Any(r=>r.AeropuertoId==a),"busqueda_case_y_unicode");
+        var planes=new ImportacionAvionesService(new CatalogosAdminRepository(db));
+        ImportarAvionesRequest PlaneRequest()=>new(){Archivo=Csv($"modelo;codigo_iata;codigo_icao;matricula;capacidad_total;cantidad_primera_clase;cantidad_segunda_clase;cantidad_tercera_clase;letras_por_fila\nLAB {run} Ñ;320;A320;LAB-{run};3;1;1;1;ABC\n","planes.csv"),PrimeraClaseId=ids[0],SegundaClaseId=ids[1],TerceraClaseId=ids[2]};
+        var plane=await planes.ImportarAsync(PlaneRequest(),ct);
+        Check(plane.Estado=="importado" && plane.AsientosImportados==3,"importacion_avion_asientos");
+        Check((await planes.ImportarAsync(PlaneRequest(),ct)).Estado=="ya_importados","duplicado_avion");
+        var planeId=plane.Filas.Single().AvionId!.Value;
+        Check((await search.BuscarAvionesAsync(run+"%",10,ct)).Count==0,"comodin_usuario_literal");
+        var physical=await db.AsientosFisicos.AsNoTracking().Where(s=>s.AvionId==planeId).OrderBy(s=>s.CodigoAsiento).ToListAsync(ct);
+        Check(physical.Select(s=>s.CodigoAsiento).SequenceEqual(new[]{"1A","1B","1C"}) && physical.All(s=>s.RowVersion.Length==8),"loop_y_versiones_asientos");
+        var hasher=new PasswordHasher<Usuario>();var password=Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        var admin=new Usuario{Nombre="LAB "+run,Apellido="Administrador",Email=$"lab-{run}-admin@example.invalid".ToLowerInvariant(),Rol="admin",FechaCreacion=clock.GetUtcNow().UtcDateTime};
+        admin.PasswordHash=hasher.HashPassword(admin,password);db.Usuarios.Add(admin);await db.SaveChangesAsync(ct);
+        var users=new UsuarioService(new UsuarioRepository(db),hasher,clock);var email=$"lab-{run}-a@example.invalid".ToLowerInvariant();
+        var ua=await users.RegistrarAsync(new(){Nombre="LAB "+run,Apellido="Cliente A",Email=email,Password=password},ct);
+        var ub=await users.RegistrarAsync(new(){Nombre="LAB "+run,Apellido="Cliente B",Email=$"lab-{run}-b@example.invalid",Password=password},ct);
+        var service=new VueloAdminService(new VueloAdminRepository(db),clock);
+        var start=clock.GetUtcNow().AddDays(7);
+        var flight=await service.CrearAsync(new(){NumeroVuelo="LAB "+run,AvionId=planeId,AeropuertoOrigenId=a,AeropuertoDestinoId=b,SalidaProgramada=start,LlegadaProgramada=start.AddHours(2),TarifasPorClase=ids.Select(id=>new PrecioClaseAdminRequest{CategoriaId=id,Precio=100}).ToArray()},admin.UsuarioId,ct);
+        var seats=await db.AsientosVuelo.AsNoTracking().Where(s=>s.VueloId==flight.Vuelo.VueloId).OrderBy(s=>s.AsientoVueloId).Select(s=>s.AsientoVueloId).ToArrayAsync(ct);
+        Check(seats.Length==3,"asientos_por_vuelo");return new(admin.UsuarioId,ua.UsuarioId,ub.UsuarioId,email,password,planeId,a,b,flight.Vuelo.VueloId,seats,ids);
+    }
+
+    private static async Task Authentication(Fixture f)
+    {
+        await using var db=Db();var service=new AutenticacionService(new UsuarioRepository(db),new TokenRepository(db),new PasswordHasher<Usuario>(),Options.Create(new OpcionesSesion{DuracionTokenMinutos=60}),clock);
+        var login=await service.LoginAsync(new(){Email=f.Email.ToUpperInvariant(),Password=f.Password},ct);
+        Check(login!=null,"login_real");var session=await service.ValidarTokenAsync(login!.Token,ct);
+        Check(session?.UsuarioId==f.A && session.Rol=="cliente","token_persistido_rol_cliente");Check(await service.ValidarTokenAsync("a"+login.Token[1..],ct)==null,"token_case_sensitive");
+        await service.LogoutAsync(session!.SesionId,f.A,ct);Check(await service.ValidarTokenAsync(login.Token,ct)==null,"revocacion_real");
+    }
+
+    private static async Task VersionsAndRaces(Fixture f)
+    {
+        await using(var a=Db())await using(var b=Db())
+        {
+            var x=await a.AsientosVuelo.SingleAsync(s=>s.AsientoVueloId==f.Seats[1],ct);var y=await b.AsientosVuelo.SingleAsync(s=>s.AsientoVueloId==f.Seats[1],ct);var previous=x.RowVersion.ToArray();
+            x.Estado="bloqueado";await a.SaveChangesAsync(ct);Check(x.RowVersion.Length==8 && !x.RowVersion.SequenceEqual(previous),"trigger_update_returning");
+            y.Precio=101;var conflict=false;try{await b.SaveChangesAsync(ct);}catch(DbUpdateConcurrencyException){conflict=true;}Check(conflict,"version_obsoleta_rechazada");
+            x.Estado="disponible";await a.SaveChangesAsync(ct);
+        }
+        var gate=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var start=clock.GetUtcNow().AddDays(9);
+        async Task<bool> Create(string suffix)
+        {
+            await gate.Task;await using var db=Db();var service=new VueloAdminService(new VueloAdminRepository(db),clock);
+            try{await service.CrearAsync(new(){NumeroVuelo="LAB "+run+suffix,AvionId=f.Plane,AeropuertoOrigenId=f.Origin,AeropuertoDestinoId=f.Destination,SalidaProgramada=start,LlegadaProgramada=start.AddHours(2),TarifasPorClase=f.Classes.Select(id=>new PrecioClaseAdminRequest{CategoriaId=id,Precio=100}).ToArray()},f.Admin,ct);return true;}
+            catch(Vuelos_Backend.Models.Vuelos.VueloAdminOperacionException e)when(e.Codigo=="avion_no_disponible"){return false;}
+        }
+        var first=Create(" A");var second=Create(" B");gate.SetResult();var result=await Task.WhenAll(first,second);Check(result.Count(ok=>ok)==1,"solapamiento_concurrente_avion");
+    }
+
+    private static ReservaService Reservations(AppDbContext db)
+    {
+        var repo=new ReservaRepository(db);var cycle=new CicloReservaRepository(db,clock);
+        return new(repo,new CalculadoraTarifas(Options.Create(new OpcionesTarifasPasajero{Porcentajes=new(){["adulto"]=100,["joven"]=100,["nino"]=80,["bebe"]=75}})),clock,new ReservationOptions(),cycle,new ExpiracionReservasService(repo,cycle,clock));
+    }
+    private static async Task<CrearReservaRequest> Request(Fixture f,int seat)
+    {
+        await using var db=Db();var row=await db.AsientosVuelo.AsNoTracking().SingleAsync(s=>s.AsientoVueloId==seat,ct);
+        return new(){VueloId=f.Flight,TotalEsperado=115,Pasajeros=[new(){AsientoVueloId=seat,RowVersionAsiento=Convert.ToBase64String(row.RowVersion),Cedula="1234567890",PrimerNombre="LAB",PrimerApellido=run,TipoPasajero="adulto"}]};
+    }
+    private static async Task ReservationAndPayments(Fixture f)
+    {
+        var request=await Request(f,f.Seats[0]);var gate=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task<(int User,ReservaResponse? Hold)> Reserve(int user)
+        {
+            await gate.Task;await using var db=Db();try{return(user,await Reservations(db).CrearAsync(user,request,ct));}
+            catch(ReservaOperacionException e)when(e.Error==ErrorReserva.Conflicto){return(user,null);}
+        }
+        var a=Reserve(f.A);var b=Reserve(f.B);gate.SetResult();var results=await Task.WhenAll(a,b);Check(results.Count(r=>r.Hold!=null)==1,"doble_reserva_concurrente");var winner=results.Single(r=>r.Hold!=null);
+        await using(var db=Db())
+        {
+            Check(await db.DetallesReserva.CountAsync(d=>d.AsientoVueloId==f.Seats[0] && d.Estado=="activo",ct)==1,"asignacion_activa_unica");
+            Check(winner.Hold!.Subtotal==100 && winner.Hold.MontoIva==15 && winner.Hold.MontoTotal==115,"iva_persistido");
+            await using(var tx=await db.Database.BeginTransactionAsync(ct))
+            {
+                var extra=new DetalleReserva{ReservaId=winner.Hold.ReservaId,AsientoVueloId=f.Seats[0],PrimerNombre="LAB",PrimerApellido=run,DocumentoIdentidad="0987654321",TipoPasajero="adulto",PrecioCongelado=100,Estado="activo"};
+                db.DetallesReserva.Add(extra);var unique=false;
+                try{await db.SaveChangesAsync(ct);}catch(DbUpdateException e)when(e.InnerException is PostgresException pg && pg.SqlState=="23505" && pg.ConstraintName=="UX_detalle_reservas_asiento_activo"){unique=true;}
+                await tx.RollbackAsync(ct);db.Entry(extra).State=EntityState.Detached;
+                Check(unique,"restriccion_unica_activa_real");
+            }
+            var other=winner.User==f.A?f.B:f.A;var rejected=false;try{await Reservations(db).ObtenerPropiaAsync(other,winner.Hold.ReservaId,ct);}catch(ReservaOperacionException e)when(e.Error==ErrorReserva.NoEncontrada){rejected=true;}Check(rejected,"reserva_ajena_oculta");
+            await Reservations(db).CancelarAsync(winner.User,winner.Hold.ReservaId,new(){RowVersion=winner.Hold.RowVersion},ct);
+        }
+        await using(var db=Db())
+        {
+            Check((await db.AsientosVuelo.SingleAsync(s=>s.AsientoVueloId==f.Seats[0],ct)).Estado=="disponible","cancelacion_libera");
+            var hold=await Reservations(db).CrearAsync(f.A,await Request(f,f.Seats[0]),ct);clock.Advance(TimeSpan.FromHours(13));
+            var repo=new ReservaRepository(db);await new ExpiracionReservasService(repo,new CicloReservaRepository(db,clock),clock).ExpirarVueloAsync(f.Flight,ct);
+            Check((await db.Reservas.AsNoTracking().SingleAsync(r=>r.ReservaId==hold.ReservaId,ct)).Estado=="expirada","expiracion_persistida");
+        }
+        var external=new ExternalState();ReservaResponse payable;
+        await using(var db=Db()){payable=await Reservations(db).CrearAsync(f.A,await Request(f,f.Seats[0]),ct);await Payment(db,external).CrearAsync(f.A,payable.ReservaId,new(){RowVersion=payable.RowVersion},ct);}
+        var start=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task Capture(){await start.Task;await using var db=Db();await Payment(db,external).CapturarAsync(f.A,payable.ReservaId,ct);}
+        var one=Capture();var two=Capture();start.SetResult();await Task.WhenAll(one,two);
+        await using(var db=Db())
+        {
+            var paid=await Payment(db,external).ConsultarAsync(f.A,payable.ReservaId,ct);
+            Check(paid.EstadoReserva=="pagada" && external.Captures==1 && paid.Monto==115,"captura_real_db_idempotente_proveedor_simulado");
+            var eventId="LAB-"+run;var store=new PagoPayPalRepository(db);
+            await store.RegistrarEventoAsync(new(){EventoId=eventId,Tipo="LAB_TEST",FechaProcesado=clock.GetUtcNow().UtcDateTime},ct);
+            await store.RegistrarEventoAsync(new(){EventoId=eventId,Tipo="LAB_TEST",FechaProcesado=clock.GetUtcNow().UtcDateTime},ct);
+            Check(await db.EventosPayPal.CountAsync(e=>e.EventoId==eventId,ct)==1,"evento_idempotente_en_db_no_prueba_firma");
+        }
+        var pending=new ExternalState{Pending=true};ReservaResponse waiting;
+        await using(var db=Db())
+        {
+            waiting=await Reservations(db).CrearAsync(f.B,await Request(f,f.Seats[2]),ct);
+            await Payment(db,pending).CrearAsync(f.B,waiting.ReservaId,new(){RowVersion=waiting.RowVersion},ct);
+            await Payment(db,pending).CapturarAsync(f.B,waiting.ReservaId,ct);
+            clock.Advance(TimeSpan.FromHours(13));var repo=new ReservaRepository(db);
+            await new ExpiracionReservasService(repo,new CicloReservaRepository(db,clock),clock).ExpirarVueloAsync(f.Flight,ct);
+            Check((await db.Reservas.AsNoTracking().SingleAsync(r=>r.ReservaId==waiting.ReservaId,ct)).Estado=="pendiente_pago","pago_pendiente_no_expira");
+            var state=await Payment(db,pending).ConsultarAsync(f.B,waiting.ReservaId,ct);pending.Completed=true;
+            await Payment(db,pending).ConciliarAsync(state.PagoId,ct);
+            Check((await db.Reservas.AsNoTracking().SingleAsync(r=>r.ReservaId==waiting.ReservaId,ct)).Estado=="pagada" && pending.Captures==1,"conciliacion_sin_recobro");
+        }
+    }
+
+    private static PagoPayPalService Payment(AppDbContext db,ExternalState state)=>new(new PagoPayPalRepository(db),new ReservaRepository(db),new ExternalClient(db,state),Options.Create(new OpcionesPayPal{Habilitado=true,Entorno="Sandbox",ClientId="fake-client",ClientSecret="fake-secret",MerchantId="SELLER123",WebhookId="LABWEBHOOK",ReturnUrl="https://frontend.example/retorno",CancelUrl="https://frontend.example/cancelar"}),clock);
+    private sealed class ExternalState{public PagoPayPal? Order;public int Captures;public bool Pending,Completed;}
+    private sealed class ExternalClient(AppDbContext db,ExternalState state):IPayPalClient
+    {
+        private void Guard(){if(db.Database.CurrentTransaction!=null)throw new Failure("proveedor_dentro_transaccion");}
+        private OrdenPayPal Result()
+        {
+            var p=state.Order!;var captured=state.Captures>0;
+            return new("LABORDER"+p.PagoId.ToString("N"),state.Completed?"COMPLETED":"APPROVED","https://sandbox.example.invalid/aprobar",p.PagoId.ToString("N"),p.Monto,"USD",p.MerchantId,captured?"LABCAP"+p.PagoId.ToString("N"):null,captured?(state.Completed?"COMPLETED":"PENDING"):null,captured?p.Monto:null,captured?"USD":null,state.Completed?clock.GetUtcNow().UtcDateTime:null);
+        }
+        public Task<OrdenPayPal> CrearAsync(PagoPayPal payment,CancellationToken token){Guard();state.Order=payment;return Task.FromResult(Result());}
+        public Task<OrdenPayPal> ConsultarAsync(string id,CancellationToken token){Guard();return Task.FromResult(Result());}
+        public Task<OrdenPayPal> CapturarAsync(PagoPayPal payment,CancellationToken token){Guard();Interlocked.Increment(ref state.Captures);if(!state.Pending)state.Completed=true;return Task.FromResult(Result());}
+        public Task<bool> VerificarEventoAsync(JsonElement value,IHeaderDictionary headers,CancellationToken token)=>Task.FromResult(false);
+    }
+    private sealed class ReservationOptions:IOptionsMonitor<OpcionesReservas>
+    {
+        public OpcionesReservas CurrentValue{get;}=new(){PorcentajeIva=15};public OpcionesReservas Get(string? name)=>CurrentValue;
+        public IDisposable? OnChange(Action<OpcionesReservas,string?> listener)=>null;
+    }
+    private sealed class Clock:TimeProvider
+    {
+        private long ticks=DateTimeOffset.UtcNow.UtcTicks/10*10;
+        public override DateTimeOffset GetUtcNow()=>new(new DateTime(Interlocked.Read(ref ticks),DateTimeKind.Utc));
+        public void Advance(TimeSpan value)=>Interlocked.Add(ref ticks,value.Ticks);
+    }
+    private sealed class Failure(string label):Exception(label);
+}

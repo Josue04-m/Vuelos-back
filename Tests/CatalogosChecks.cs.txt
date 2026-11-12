@@ -42,108 +42,26 @@ internal static class CatalogosChecks
         try { await action(); throw new Exception("Falta rechazo " + kind); }
         catch (CatalogoOperacionException ex) { Check(ex.Error == kind, ex.Codigo); }
     }
-    private static GuardarAeropuertoRequest Airport(string iata = "GYE", string? version = null) => new() { CodigoIata = iata, Nombre = "Aeropuerto", Ciudad = "Ciudad", Pais = "Ecuador", RowVersion = version };
-    private static GuardarAvionRequest Plane(string? version = null) => new() { Modelo = "Modelo", Matricula = "EC-TEST", CapacidadTotal = 1, RowVersion = version };
-    private static CrearAvionRequest NewPlane() => new() { Modelo = "Modelo", Matricula = "EC-TEST", CapacidadTotal = 1, CategoriaId = 1 };
-    private static GuardarCategoriaRequest Category(string? version = null) => new() { Nombre = "Economica", RowVersion = version };
-    private static GuardarAsientoFisicoRequest Seat(string? version = null) => new() { AvionId = 1, CategoriaId = 1, CodigoAsiento = "1A", RowVersion = version };
-
     public static async Task RunAsync()
     {
-        var ct = CancellationToken.None;
         var repo = new MemoryCatalogosRepository();
-        var service = new CatalogosAdminService(repo, TimeProvider.System);
-        var airport = await service.GuardarAeropuertoAsync(null, Airport("gye"), ct);
-        Check(airport.CodigoIata == "GYE" && airport.Activo, "normaliza aeropuerto");
-        await Error(() => service.GuardarAeropuertoAsync(null, Airport(), ct), ErrorCatalogo.Conflicto);
-        await Error(() => service.GuardarAeropuertoAsync(null, Airport("12"), ct), ErrorCatalogo.SolicitudInvalida);
-        await Error(() => service.GuardarAeropuertoAsync(1, Airport("UIO"), ct), ErrorCatalogo.Conflicto);
-        var edited = await service.GuardarAeropuertoAsync(1, Airport("UIO", airport.RowVersion), ct);
-        Check(edited.RowVersion != airport.RowVersion, "nueva versión");
-        await Error(() => service.GuardarAeropuertoAsync(1, Airport("GYE", airport.RowVersion), ct), ErrorCatalogo.Conflicto);
-        repo.VuelosHistoricos = true;
-        await Error(() => service.GuardarAeropuertoAsync(1, Airport("GYE", edited.RowVersion), ct), ErrorCatalogo.Conflicto);
-        repo.VuelosVigentes = true;
-        await Error(() => service.DesactivarAsync(TipoCatalogo.Aeropuertos, 1, new() { RowVersion = edited.RowVersion }, ct), ErrorCatalogo.Conflicto);
-        repo.VuelosVigentes = false;
-        await service.DesactivarAsync(TipoCatalogo.Aeropuertos, 1, new() { RowVersion = edited.RowVersion }, ct);
-        var inactive = await service.ObtenerAeropuertoAsync(1, ct);
-        Check(!inactive.Activo && inactive.FechaDesactivacion?.Offset == TimeSpan.Zero, "desactivación UTC");
-        Check((await service.ListarAeropuertosAsync(new(), ct)).Total == 0, "inactivos excluidos por defecto");
-        Check((await service.ListarAeropuertosAsync(new() { IncluirInactivos = true }, ct)).Total == 1, "consulta histórica");
-        await Error(() => service.GuardarAeropuertoAsync(null, Airport("UIO"), ct), ErrorCatalogo.Conflicto);
-        await Error(() => service.GuardarAeropuertoAsync(1, Airport("GYE", inactive.RowVersion), ct), ErrorCatalogo.Conflicto);
-        await service.DesactivarAsync(TipoCatalogo.Aeropuertos, 1, new() { RowVersion = inactive.RowVersion }, ct);
-        Check((await service.ObtenerAeropuertoAsync(1, ct)).RowVersion == inactive.RowVersion, "desactivación repetida no cambia datos");
-        await Error(() => service.ObtenerAeropuertoAsync(999, ct), ErrorCatalogo.NoEncontrado);
-        await Error(() => service.ListarAeropuertosAsync(new() { AvionId = 1 }, ct), ErrorCatalogo.SolicitudInvalida);
-        repo.VuelosHistoricos = false;
-        var category = await service.GuardarCategoriaAsync(null, Category(), ct);
-        var plane = await service.CrearAvionAsync(NewPlane(), ct);
-        var seat = await service.ObtenerAsientoAsync(1, ct);
-        Check(seat.AsientoFisicoId == 1 && seat.Activo, "asiento creado");
-        await Error(() => service.GuardarAsientoAsync(null, Seat() with { CodigoAsiento = "2A" }, ct), ErrorCatalogo.Conflicto);
-        await Error(() => service.DesactivarAsync(TipoCatalogo.Categorias, 1, new() { RowVersion = category.RowVersion }, ct), ErrorCatalogo.Conflicto);
-        await Error(() => service.GuardarAvionAsync(1, Plane(plane.RowVersion) with { CapacidadTotal = 0 }, ct), ErrorCatalogo.SolicitudInvalida);
-        repo.VuelosVigentes = true;
-        await Error(() => service.DesactivarAsync(TipoCatalogo.AsientosFisicos, 1, new() { RowVersion = seat.RowVersion }, ct), ErrorCatalogo.Conflicto);
-        repo.VuelosVigentes = false;
-        repo.Asignado = true;
-        await Error(() => service.GuardarAsientoAsync(1, Seat(seat.RowVersion) with { CodigoAsiento = "1B" }, ct), ErrorCatalogo.Conflicto);
-        repo.Asignado = false;
-        await service.DesactivarAsync(TipoCatalogo.AsientosFisicos, 1, new() { RowVersion = seat.RowVersion }, ct);
-        await service.DesactivarAsync(TipoCatalogo.Categorias, 1, new() { RowVersion = category.RowVersion }, ct);
-        await Error(() => service.GuardarAsientoAsync(null, Seat() with { CodigoAsiento = "2A" }, ct), ErrorCatalogo.SolicitudInvalida);
-        await service.DesactivarAsync(TipoCatalogo.Aviones, 1, new() { RowVersion = plane.RowVersion }, ct);
-        Check((await service.ListarAsientosAsync(new() { Activo = false, AvionId = 1 }, ct)).Total == 1, "filtro de asientos por avión e inactivos");
-        await Error(() => service.GuardarCategoriaAsync(null, Category() with { RowVersion = "invalid" }, ct), ErrorCatalogo.SolicitudInvalida);
-        await Error(() => service.ListarAvionesAsync(new() { Pagina = int.MaxValue, TamanoPagina = 100 }, ct), ErrorCatalogo.SolicitudInvalida);
-        Check(!repo.InTransaction, "transacciones dispuestas tras rechazos");
-        await GenerationChecks();
+        var service = new CatalogosAdminService(repo);
+        await repo.CrearAsync(new Aeropuerto { CodigoIata = "GYE", Nombre = "Aeropuerto", Ciudad = "Ciudad", Pais = "Ecuador", Activo = false }, CancellationToken.None);
+        Check((await service.ListarAeropuertosAsync(new(), CancellationToken.None)).Total == 0, "inactivos excluidos");
+        Check((await service.ListarAeropuertosAsync(new() { IncluirInactivos = true }, CancellationToken.None)).Total == 1, "consulta histórica");
+        Check(!(await service.ObtenerAeropuertoAsync(1, CancellationToken.None)).Activo, "detalle conserva inactivos");
+        await Error(() => service.ObtenerAeropuertoAsync(999, CancellationToken.None), ErrorCatalogo.NoEncontrado);
+        await Error(() => service.ListarAeropuertosAsync(new() { AvionId = 1 }, CancellationToken.None), ErrorCatalogo.SolicitudInvalida);
+        await Error(() => service.ListarAvionesAsync(new() { Pagina = int.MaxValue, TamanoPagina = 100 }, CancellationToken.None), ErrorCatalogo.SolicitudInvalida);
+        Check(typeof(ICatalogosAdminService).GetMethods().All(m => m.Name.StartsWith("Listar") || m.Name.StartsWith("Obtener")), "servicio solo consultas");
         await SqlChecks();
         await HttpChecks();
         Console.WriteLine($"OK: {count} comprobaciones de catálogos administrativos; sin SQL Server.");
     }
 
-    private static async Task GenerationChecks()
-    {
-        var ct = CancellationToken.None;
-        var repo = new MemoryCatalogosRepository();
-        var service = new CatalogosAdminService(repo, TimeProvider.System);
-        await Error(() => service.CrearAvionAsync(NewPlane(), ct), ErrorCatalogo.NoEncontrado);
-        Check((await service.ListarAvionesAsync(new(), ct)).Total == 0, "sin categoría no crea avión huérfano");
-        var category = await service.GuardarCategoriaAsync(null, Category(), ct);
-        await Error(() => service.CrearAvionAsync(NewPlane() with { LetrasPorFila = "Aa" }, ct), ErrorCatalogo.SolicitudInvalida);
-        await Error(() => service.CrearAvionAsync(NewPlane() with { CapacidadTotal = 1001 }, ct), ErrorCatalogo.SolicitudInvalida);
-        var plane = await service.CrearAvionAsync(NewPlane() with { CapacidadTotal = 5 }, ct);
-        var seats = await service.ListarAsientosAsync(new() { AvionId = plane.AvionId }, ct);
-        Check(seats.Elementos.Select(x => x.CodigoAsiento).SequenceEqual(new[] { "1A", "1B", "1C", "2A", "2B" }), "loop con fila final parcial");
-        Check(seats.Total == plane.CapacidadTotal && seats.Elementos.All(x => x.CategoriaId == category.CategoriaId && x.Activo), "capacidad exacta y categoría");
-        var numeric = await service.CrearAvionAsync(NewPlane() with { Matricula = "EC-NUM", CapacidadTotal = 3, LetrasPorFila = "" }, ct);
-        Check((await service.ListarAsientosAsync(new() { AvionId = numeric.AvionId }, ct)).Elementos.Select(x => x.CodigoAsiento).SequenceEqual(new[] { "1", "2", "3" }), "numeración consecutiva");
-        var custom = await service.CrearAvionAsync(NewPlane() with { Matricula = "EC-LET", CapacidadTotal = 4, LetrasPorFila = "ab" }, ct);
-        Check((await service.ListarAsientosAsync(new() { AvionId = custom.AvionId }, ct)).Elementos.Select(x => x.CodigoAsiento).SequenceEqual(new[] { "1A", "1B", "2A", "2B" }), "letras configurables en mayúsculas");
-        repo.FalloAsientos = true;
-        await Error(() => service.CrearAvionAsync(NewPlane() with { Matricula = "EC-FAIL", CapacidadTotal = 3 }, ct), ErrorCatalogo.Conflicto);
-        Check((await service.ListarAvionesAsync(new(), ct)).Total == 3 && (await service.ListarAsientosAsync(new(), ct)).Total == 12, "rollback simulado de avión y asientos ante fallo parcial");
-        repo.FalloAsientos = false;
-        await service.GuardarAvionAsync(plane.AvionId, new() { Modelo = plane.Modelo, Matricula = plane.Matricula, CapacidadTotal = 6, RowVersion = plane.RowVersion }, ct);
-        Check((await service.ListarAsientosAsync(new() { AvionId = plane.AvionId }, ct)).Total == 5, "editar no regenera asientos");
-        var segunda = await service.GuardarCategoriaAsync(null, Category() with { Nombre = "Segunda Clase" }, ct);
-        var distribution = new CrearAvionRequest { Modelo = "Clases", Matricula = "EC-CLASE", CapacidadTotal = 5,
-            DistribucionClases = [new() { CategoriaId = category.CategoriaId, Cantidad = 2 }, new() { CategoriaId = segunda.CategoriaId, Cantidad = 3 }] };
-        var grouped = await service.CrearAvionAsync(distribution, ct);
-        var groupedSeats = (await service.ListarAsientosAsync(new() { AvionId = grouped.AvionId }, ct)).Elementos;
-        Check(groupedSeats.Count(a => a.CategoriaId == category.CategoriaId) == 2 && groupedSeats.Count(a => a.CategoriaId == segunda.CategoriaId) == 3, "distribución exacta por clases");
-        await Error(() => service.CrearAvionAsync(distribution with { Matricula = "EC-SUMA", CapacidadTotal = 6 }, ct), ErrorCatalogo.SolicitudInvalida);
-        await Error(() => service.CrearAvionAsync(distribution with { Matricula = "EC-DUP", DistribucionClases = [new() { CategoriaId = 1, Cantidad = 2 }, new() { CategoriaId = 1, Cantidad = 3 }] }, ct), ErrorCatalogo.SolicitudInvalida);
-        await Error(() => service.CrearAvionAsync(distribution with { CategoriaId = 1 }, ct), ErrorCatalogo.SolicitudInvalida);
-        await Error(() => service.CrearAvionAsync(distribution with { DistribucionClases = [] }, ct), ErrorCatalogo.SolicitudInvalida);
-    }
-
     private static Task SqlChecks()
     {
-        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused").Options);
         var repository = new CatalogosAdminRepository(context);
         var method = typeof(CatalogosAdminRepository).GetMethod("Consulta", BindingFlags.NonPublic | BindingFlags.Instance)!;
         foreach (var type in new[] { typeof(Aeropuerto), typeof(Avion), typeof(CategoriaAsiento), typeof(AsientoFisico) })
@@ -153,13 +71,13 @@ internal static class CatalogosChecks
             Check(!entity.GetDeclaredQueryFilters().Any(), "sin filtro global histórico");
             var query = (IQueryable)method.MakeGenericMethod(type).Invoke(repository, new object[] { new FiltroCatalogoRequest { Buscar = "TEST" } })!;
             var sql = query.ToQueryString();
-            Check(sql.Contains("[activo]") && sql.Contains("ORDER BY"), "traducción de búsqueda " + type.Name);
+            Check(sql.Contains(".activo") && sql.Contains("ORDER BY"), "traducción de búsqueda " + type.Name);
         }
-        var migration = context.GetService<IMigrationsAssembly>().Migrations.Single(x => x.Key.EndsWith("_CatalogosAdministrativos"));
-        var instance = context.GetService<IMigrationsAssembly>().CreateMigration(migration.Value, context.Database.ProviderName!);
-        Check(instance.UpOperations.Count == 12 && instance.UpOperations.All(x => x is AddColumnOperation), "migración solo 12 columnas");
-        var script = context.GetService<IMigrator>().GenerateScript("NombresPasajerosSeparados", "CatalogosAdministrativos");
-        Check(script.Contains("rowversion") && !script.Contains("DROP TABLE") && !script.Contains("DROP CONSTRAINT"), "script incremental conserva tablas y restricciones");
+        var instance = PruebasModeloPostgreSql.Inicial(context);
+        var catalogs = new[]{"aeropuertos","aviones","categorias_asiento","asientos_fisicos"};
+        Check(catalogs.All(n => {var t=PruebasModeloPostgreSql.Tabla(instance,n);return t.Columns.Any(c=>c.Name=="activo" && Equals(c.DefaultValue,true)) && t.Columns.Any(c=>c.Name=="fecha_desactivacion" && c.IsNullable) && t.Columns.Any(c=>c.Name=="row_version" && c.ColumnType=="bytea");}), "estado, historia y version de los cuatro catalogos");
+        var script = PruebasModeloPostgreSql.Sql(context);
+        Check(script.Contains("bytea") && !script.Contains("DROP TABLE") && !script.Contains("DROP CONSTRAINT"), "instalacion PostgreSQL sin borrados");
         Check(!context.Database.HasPendingModelChanges(), "snapshot actualizado");
         Check(context.Database.GetDbConnection().State == System.Data.ConnectionState.Closed, "sin conexión SQL");
         return Task.CompletedTask;
@@ -191,10 +109,10 @@ internal static class CatalogosChecks
         }
         Check(repo.Created == 0, "permisos rechazan antes de escribir");
         // Preparación interna del fixture; no existen altas HTTP de estos catálogos.
-        var service = new CatalogosAdminService(repo, TimeProvider.System);
-        await service.GuardarAeropuertoAsync(null, Airport(), CancellationToken.None);
-        await service.GuardarCategoriaAsync(null, Category(), CancellationToken.None);
-        await service.CrearAvionAsync(NewPlane(), CancellationToken.None);
+        await repo.CrearAsync(new Aeropuerto { CodigoIata = "GYE", Nombre = "Aeropuerto", Ciudad = "Ciudad", Pais = "Ecuador" }, CancellationToken.None);
+        await repo.CrearAsync(new CategoriaAsiento { Nombre = "Primera Clase" }, CancellationToken.None);
+        await repo.CrearAsync(new Avion { Modelo = "Modelo", Matricula = "EC-TEST", CapacidadTotal = 1 }, CancellationToken.None);
+        await repo.CrearAsync(new AsientoFisico { AvionId = 1, CategoriaId = 1, CodigoAsiento = "1A" }, CancellationToken.None);
         http.DefaultRequestHeaders.Remove("Authorization"); http.DefaultRequestHeaders.Add("Authorization", "Bearer admin");
         var created = repo.Created;
         foreach (var route in catalogs)
@@ -226,9 +144,8 @@ internal sealed class MemoryCatalogosRepository : ICatalogosAdminRepository
 {
     private Dictionary<(Type, int), object> rows = [];
     private long sequence;
-    public bool InTransaction, VuelosVigentes, VuelosHistoricos, Asignado;
+    public bool InTransaction;
     public int Created;
-    public bool FalloAsientos;
     public int FallarEnLoteAsientos, LotesAsientos;
     private static T Clone<T>(T value) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value))!;
     private static PropertyInfo Key<T>() => typeof(T).GetProperty(typeof(T) == typeof(Aeropuerto) ? "AeropuertoId" : typeof(T) == typeof(Avion) ? "AvionId" : typeof(T) == typeof(CategoriaAsiento) ? "CategoriaId" : "AsientoFisicoId")!;
@@ -274,21 +191,13 @@ internal sealed class MemoryCatalogosRepository : ICatalogosAdminRepository
         foreach (var asiento in asientos)
         {
             await CrearAsync(asiento, ct);
-            if (FalloAsientos || FallarEnLoteAsientos == LotesAsientos) throw new CatalogoOperacionException(ErrorCatalogo.Conflicto, "fallo_asientos", "Fallo simulado después del primer asiento");
+            if (FallarEnLoteAsientos == LotesAsientos) throw new CatalogoOperacionException(ErrorCatalogo.Conflicto, "fallo_asientos", "Fallo simulado después del primer asiento");
         }
     }
-    public Task ActualizarAsync<T>(T entity, CancellationToken ct) where T : class, ICatalogoAdministrable
+    public Task ActualizarFixtureAsync<T>(T entity, CancellationToken ct) where T : class, ICatalogoAdministrable
     {
         var id = (int)Key<T>().GetValue(entity)!; Unique(entity, id); entity.RowVersion = BitConverter.GetBytes(++sequence); rows[(typeof(T), id)] = Clone(entity); return Task.CompletedTask;
     }
-    public async Task DesactivarAsync<T>(int id, byte[] version, DateTime utc, CancellationToken ct) where T : class, ICatalogoAdministrable
-    {
-        var row = (await ObtenerAsync<T>(id, ct))!; row.Activo = false; row.FechaDesactivacion = utc; row.RowVersion = BitConverter.GetBytes(++sequence); rows[(typeof(T), id)] = row;
-    }
-    public Task<bool> TieneVuelosAsync(TipoCatalogo tipo, int id, bool soloVigentes, CancellationToken ct) => Task.FromResult(soloVigentes ? VuelosVigentes : VuelosHistoricos || VuelosVigentes);
-    public Task<int> ContarAsientosActivosAsync(int avionId, int? excluir, CancellationToken ct) => Task.FromResult(rows.Values.OfType<AsientoFisico>().Count(a => a.AvionId == avionId && a.Activo && a.AsientoFisicoId != excluir));
-    public Task<bool> CategoriaTieneAsientosActivosAsync(int id, CancellationToken ct) => Task.FromResult(rows.Values.OfType<AsientoFisico>().Any(a => a.CategoriaId == id && a.Activo));
-    public Task<bool> AsientoFueAsignadoAsync(int id, CancellationToken ct) => Task.FromResult(Asignado);
     private sealed class Transaction(MemoryCatalogosRepository owner, Dictionary<(Type, int), object> snapshot) : ITransaccionCatalogo
     {
         private bool committed;

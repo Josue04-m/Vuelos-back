@@ -200,7 +200,7 @@ internal static class Checks
         Check(reservasVuelo.Count == 1 && reservasVuelo[0].CodigoReserva == "PNRES1", "consulta reservas del vuelo");
 
         await using (var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options))
+            .UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused").Options))
         {
             Check(!context.Database.HasPendingModelChanges(), "sin cambios de esquema/migración");
             Check(context.Database.GetDbConnection().State == System.Data.ConnectionState.Closed, "sin conexión SQL");
@@ -272,7 +272,7 @@ internal static class Checks
         await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "programado", Version = boarding.Version }, 17, ct), ErrorVueloAdmin.Conflicto, "transicion_invalida");
         await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "en vuelo", Version = boarding.Version, SalidaReal = DateTimeOffset.UtcNow.AddDays(1) }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
         await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "en vuelo", Version = boarding.Version, LlegadaReal = DateTimeOffset.UtcNow }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
-        var departure = DateTimeOffset.UtcNow.AddMinutes(-10).ToOffset(TimeSpan.FromHours(-5));
+        var departure = PruebasModeloPostgreSql.Precision(DateTimeOffset.UtcNow.AddMinutes(-10)).ToOffset(TimeSpan.FromHours(-5));
         var flying = await service.CambiarEstadoAsync(1, new() { NuevoEstado = "en vuelo", Version = boarding.Version, SalidaReal = departure }, 17, ct);
         Check(flying.Vuelo.SalidaReal == departure.ToUniversalTime(), "salida explícita normalizada a UTC");
         await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "finalizado", Version = flying.Version, LlegadaReal = DateTimeOffset.UtcNow.AddDays(1) }, 17, ct), ErrorVueloAdmin.SolicitudInvalida, "solicitud_vuelo_invalida");
@@ -293,13 +293,13 @@ internal static class Checks
         legacy = await service.ObtenerAsync(1, ct);
         await Error(() => service.CambiarEstadoAsync(1, new() { NuevoEstado = "finalizado", Version = legacy.Version }, 17, ct), ErrorVueloAdmin.Conflicto, "horarios_requieren_revision");
 
-        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused").Options);
         var repository = new Vuelos_Backend.Repositories.Vuelos.VueloAdminRepository(context);
         var method = repository.GetType().GetMethod("ConsultaHistorial", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         var query = (IQueryable<HistorialEstadoVuelo>)method.Invoke(repository, new object[] { 1 })!;
         var sql = query.ToQueryString();
-        Check(!sql.Contains("WHERE [u].[eliminado]"), "SQL historial no filtra al actor eliminado");
-        Check(sql.Contains("[usuario_admin_id]") && sql.Contains("[vuelo_id] ="), "historial conserva actor y filtro de vuelo");
+        Check(!System.Text.RegularExpressions.Regex.IsMatch(sql,@"(?:WHERE|AND)[^\n]*eliminado"), "SQL historial no filtra al actor eliminado");
+        Check(sql.Contains("usuario_admin_id") && sql.Contains("vuelo_id ="), "historial conserva actor y filtro de vuelo");
         repo.Historiales.Add(new HistorialEstadoVuelo { VueloId = 1, UsuarioAdminId = 99, EstadoNuevo = "embarcando", FechaCambio = DateTime.UtcNow,
             UsuarioAdmin = new Usuario { UsuarioId = 99, Nombre = "Admin", Apellido = "Anterior", Eliminado = true } });
         var history = await service.ObtenerHistorialAsync(1, ct);

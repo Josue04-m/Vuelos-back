@@ -1,0 +1,88 @@
+using System;
+using System.Data;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Vuelos_Backend.Configuration;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Models.Reservas;
+using Vuelos_Backend.Models.Reservas.DTOs;
+
+internal static class ModeloPostgreSql
+{
+    private static int checks;
+    private static void Check(bool ok, string message)
+    {
+        if (!ok) throw new Exception(message);
+        checks++;
+    }
+
+    public static void Main()
+    {
+        // Solo se construye/valida el modelo y se genera SQL en memoria.
+        // No se abre una conexión, no se arranca la API ni se ejecuta este SQL.
+        using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused",
+                o => o.MigrationsHistoryTable("__EFMigrationsHistory", BaseDatosPostgreSql.Esquema)).Options);
+        Check(db.Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL", "Proveedor incorrecto");
+        var model = db.GetService<IDesignTimeModel>().Model;
+        var entities = model.GetEntityTypes().ToArray();
+        Check(entities.Length == 15, "Cambió el número de entidades del modelo");
+        foreach (var entity in entities)
+        {
+            Check(entity.GetSchema() == "pna", "Tabla fuera del esquema privado: " + entity.Name);
+            Check(entity.GetForeignKeys().All(f => f.DeleteBehavior == DeleteBehavior.NoAction),
+                "Una FK permite cascada física: " + entity.Name);
+            foreach (var property in entity.GetProperties())
+            {
+                var type = property.GetColumnType()!;
+                Check(!new[] { "rowversion", "datetime", "nvarchar", "uniqueidentifier" }
+                    .Any(t => type.Contains(t, StringComparison.OrdinalIgnoreCase)) && type != "bit",
+                    "Tipo SQL Server: " + entity.Name + "." + property.Name);
+                if ((Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType) == typeof(DateTime))
+                    Check(type == "timestamp with time zone", "Fecha sin UTC: " + entity.Name + "." + property.Name);
+            }
+            Check(entity.GetCheckConstraints().All(c => !c.Sql.Contains('[') && !c.Sql.Contains("ISJSON")),
+                "CHECK con sintaxis SQL Server: " + entity.Name);
+        }
+        var versions = entities.Where(e => e.FindProperty("RowVersion") != null).ToArray();
+        Check(versions.Length == 7, "Deben existir siete tablas con versión");
+        foreach (var entity in versions)
+        {
+            var v = entity.FindProperty("RowVersion")!;
+            Check(v.ClrType == typeof(byte[]) && v.GetColumnType() == "bytea" && !v.IsNullable,
+                "Contrato binario cambiado: " + entity.Name);
+            Check(v.IsConcurrencyToken && v.ValueGenerated == ValueGenerated.OnAddOrUpdate &&
+                v.GetBeforeSaveBehavior() == PropertySaveBehavior.Ignore &&
+                v.GetAfterSaveBehavior() == PropertySaveBehavior.Ignore,
+                "La base debe generar la versión: " + entity.Name);
+            Check(entity.GetCheckConstraints().Any(c => c.Sql.Contains("octet_length") && c.Sql.Contains("= 8")),
+                "Falta longitud de versión: " + entity.Name);
+            Check(entity.GetDeclaredTriggers().Count() == 1, "Falta declaración del trigger: " + entity.Name);
+        }
+        var reservation = model.FindEntityType(typeof(Reserva))!;
+        Check(new[] { "Subtotal", "PorcentajeIva", "MontoIva" }.All(p => reservation.FindProperty(p)!.IsNullable),
+            "Se perdió el IVA histórico nullable");
+        Check(reservation.GetCheckConstraints().Any(c => c.Name == "CK_reservas_desglose_iva"), "Falta integridad IVA");
+        Check(new VersionFilaAttribute().IsValid(Convert.ToBase64String(new byte[8])) &&
+            !new VersionFilaAttribute().IsValid(Convert.ToBase64String(new byte[4])), "Cambió el contrato Flutter");
+        Check(entities.SelectMany(e => e.GetProperties()).Count(p => p.GetColumnType() == "json") == 2,
+            "JSON de origen debe conservarse como json textual");
+        Check(entities.SelectMany(e => e.GetIndexes()).Any(i => i.GetDatabaseName() == "UX_detalle_reservas_asiento_activo" &&
+            i.IsUnique && i.GetFilter() == "\"estado\" = 'activo'"), "Falta unicidad de asiento activo");
+        var migrations = db.GetService<IMigrationsAssembly>();
+        Check(migrations.Migrations.Count == 1 && migrations.Migrations.Single().Key.EndsWith("_InicialPostgreSql") &&
+            migrations.ModelSnapshot?.GetType().Namespace == "Vuelos_Backend.Data.Migrations.PostgreSql",
+            "Solo debe descubrirse la migración/snapshot PostgreSQL");
+        Check(!db.Database.HasPendingModelChanges(), "Snapshot PostgreSQL diferente del modelo actual");
+        var sql = db.Database.GenerateCreateScript();
+        Check(sql.Contains("CREATE TABLE pna.") || sql.Contains("CREATE TABLE \"pna\"."), "DDL sin esquema pna");
+        Check(!sql.Contains("[dbo]") && !sql.Contains("GETDATE()") && !sql.Contains("GETUTCDATE()"), "DDL SQL Server");
+        Check(sql.Contains("timestamp with time zone") && sql.Contains("bytea") && sql.Contains("octet_length"), "DDL incompleto");
+        Check(sql.Contains("GENERATED BY DEFAULT AS IDENTITY"), "Falta identidad PostgreSQL");
+        Check(db.Database.GetDbConnection().State == ConnectionState.Closed, "Se abrió una conexión");
+        Console.WriteLine($"OK: {checks} comprobaciones del modelo PostgreSQL; sin conexión ni ejecución de SQL. Migración y triggers pendientes de aplicación manual.");
+    }
+}

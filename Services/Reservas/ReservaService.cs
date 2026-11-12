@@ -180,7 +180,7 @@ public sealed class ReservaService(
         await repository.GuardarAsync(cancellationToken);
         foreach (var id in liberar.Order())
             await CambiarEstado(asientos[id], "reservado", "disponible", asientos[id].RowVersion, cancellationToken);
-        // Los asientos liberados tienen nuevas versiones generadas por SQL Server.
+        // Los asientos liberados tienen nuevas versiones generadas por la base.
         var versionesLiberadas = (await repository.ObtenerAsientosAsync(
             vueloId, liberar.ToArray(), cancellationToken)).ToDictionary(a => a.AsientoVueloId);
         foreach (var c in cambios.OrderBy(c => c.AsientoVueloId))

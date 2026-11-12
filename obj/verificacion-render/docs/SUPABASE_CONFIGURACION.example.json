@@ -1,0 +1,5 @@
+{
+  "ConnectionStrings": {
+    "SupabaseConnection": "Host=HOST_DEL_PANEL_CONNECT;Port=5432;Database=postgres;Username=USUARIO_DEL_PANEL_CONNECT;Password=CONFIGURAR_LOCALMENTE;SSL Mode=VerifyFull"
+  }
+}

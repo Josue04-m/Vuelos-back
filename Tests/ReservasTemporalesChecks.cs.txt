@@ -102,14 +102,12 @@ internal static class ReservasTemporalesChecks
         Check(oldRead.AnteriorAlFlujoTemporal && oldRead.Estado == "confirmada" && oldRead.Compra is null, "datos antiguos no se pagan ni expiran por inferencia");
 
         await HttpChecks();
-        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused").Options);
         Check(!context.Database.HasPendingModelChanges(), "modelo temporal coincide con snapshot");
-        var migrations = context.GetService<IMigrationsAssembly>();
-        var info = migrations.Migrations.Single(m => m.Key.EndsWith("ReservasTemporalesCompraSimulada"));
-        var migration = migrations.CreateMigration(info.Value, context.Database.ProviderName!);
-        Check(migration.UpOperations.OfType<AddColumnOperation>().Single().IsNullable, "fecha nullable conserva registros antiguos");
-        Check(migration.UpOperations.OfType<CreateTableOperation>().Single().Name == "compras_simuladas", "tabla solo de compras simuladas");
-        Check(!migration.UpOperations.Any(op => op is UpdateDataOperation or DeleteDataOperation), "sin conversión ni borrado de datos previos");
+        var migration = PruebasModeloPostgreSql.Inicial(context);
+        Check(PruebasModeloPostgreSql.Tabla(migration,"reservas").Columns.Single(c=>c.Name=="fecha_expiracion").IsNullable, "fecha nullable conserva historia");
+        Check(PruebasModeloPostgreSql.Tabla(migration,"compras_simuladas").Name=="compras_simuladas", "comprobantes simulados historicos conservados");
+        Check(!migration.UpOperations.Any(op=>op is UpdateDataOperation or DeleteDataOperation), "sin conversion de historia");
         Check(context.Database.GetDbConnection().State == System.Data.ConnectionState.Closed, "sin SQL Server");
         Console.WriteLine($"OK: {count} comprobaciones de reservas temporales e histórico; sin SQL Server.");
     }

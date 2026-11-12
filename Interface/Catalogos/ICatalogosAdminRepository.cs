@@ -1,4 +1,3 @@
-using Vuelos_Backend.Models.Catalogos;
 using Vuelos_Backend.Models.Catalogos.DTOs;
 using Vuelos_Backend.Models.Common;
 
@@ -20,10 +19,4 @@ public interface ICatalogosAdminRepository
     void LimpiarSeguimientoImportacion();
     Task<IReadOnlyList<Vuelos_Backend.Models.Aeropuertos.Aeropuerto>> ObtenerPorCodigosIataAsync(string[] codigos, CancellationToken ct);
     Task CrearAeropuertosAsync(IReadOnlyList<Vuelos_Backend.Models.Aeropuertos.Aeropuerto> aeropuertos, CancellationToken ct);
-    Task ActualizarAsync<T>(T entity, CancellationToken ct) where T : class, ICatalogoAdministrable;
-    Task DesactivarAsync<T>(int id, byte[] version, DateTime ahoraUtc, CancellationToken ct) where T : class, ICatalogoAdministrable;
-    Task<bool> TieneVuelosAsync(TipoCatalogo tipo, int id, bool soloVigentes, CancellationToken ct);
-    Task<int> ContarAsientosActivosAsync(int avionId, int? excluirId, CancellationToken ct);
-    Task<bool> CategoriaTieneAsientosActivosAsync(int categoriaId, CancellationToken ct);
-    Task<bool> AsientoFueAsignadoAsync(int asientoId, CancellationToken ct);
 }

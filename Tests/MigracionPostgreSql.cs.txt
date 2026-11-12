@@ -1,0 +1,85 @@
+using System;
+using System.Data;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Vuelos_Backend.Data;
+
+internal static class MigracionPostgreSql
+{
+    private static int checks;
+    private static void Check(bool ok, string label) { if(!ok)throw new Exception(label);checks++; }
+    private static string Normalize(string value)=>value.TrimStart('\uFEFF').Replace("\r\n","\n");
+    public static void Main()
+    {
+        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused",
+                o=>o.MigrationsHistoryTable("__EFMigrationsHistory","pna")).Options);
+        var assembly=db.GetService<IMigrationsAssembly>();
+        Check(assembly.Migrations.Count==1,"Solo una migración activa");
+        var entry=assembly.Migrations.Single();
+        Check(entry.Key=="20261111050328_InicialPostgreSql" && assembly.ModelSnapshot!.GetType().Namespace=="Vuelos_Backend.Data.Migrations.PostgreSql","Historial separado");
+        Check(!db.Database.HasPendingModelChanges(),"Snapshot pendiente");
+        var migration=assembly.CreateMigration(entry.Value,db.Database.ProviderName!);
+        var tables=migration.UpOperations.OfType<CreateTableOperation>().ToArray();
+        Check(tables.Length==15 && tables.All(t=>t.Schema=="pna"),"Modelo completo en pna");
+        Check(tables.SelectMany(t=>t.ForeignKeys).All(f=>f.OnDelete==ReferentialAction.NoAction),"Cascada física");
+        Check(!migration.UpOperations.Any(o=>o is DropTableOperation or DropColumnOperation or DeleteDataOperation or UpdateDataOperation),"Cambio destructivo inicial");
+        Check(migration.UpOperations.OfType<EnsureSchemaOperation>().Single().Name=="pna","Esquemas ajenos");
+        foreach(var table in tables)
+        {
+            Check(table.Columns.Where(c=>c.ClrType==typeof(DateTime)).All(c=>c.ColumnType=="timestamp with time zone"),"Fechas UTC: "+table.Name);
+            Check(table.CheckConstraints.All(c=>!c.Sql.Contains('[') && !c.Sql.Contains("ISJSON")),"SQL Server: "+table.Name);
+        }
+        var reservation=tables.Single(t=>t.Name=="reservas");
+        Check(new[]{"subtotal","porcentaje_iva","monto_iva"}.All(n=>reservation.Columns.Single(c=>c.Name==n).IsNullable),"Se reinterpreta IVA histórico");
+        Check(reservation.CheckConstraints.Any(c=>c.Name=="CK_reservas_desglose_iva"),"Falta CHECK IVA");
+        Check(tables.SelectMany(t=>t.Columns).Count(c=>c.ColumnType=="json")==2,"Metadatos importados");
+        Check(migration.UpOperations.OfType<CreateIndexOperation>().Any(i=>i.Name=="UX_detalle_reservas_asiento_activo" && i.IsUnique && i.Filter=="\"estado\" = 'activo'"),"Asignación activa única");
+        Check(migration.UpOperations.OfType<CreateIndexOperation>().Count(i=>i.Table=="pagos_paypal" && i.IsUnique && i.Filter!=null)==2,"Órdenes/capturas únicas");
+        var statements=migration.UpOperations.OfType<SqlOperation>().ToArray();
+        Check(statements.All(s=>!s.SuppressTransaction),"DDL fuera de transacción");
+        Check(migration.UpOperations.First() is SqlOperation guard && guard.Sql.Contains("pna no esta vacio") && guard.Sql.Contains("__EFMigrationsHistory"),"Falta protección de esquema existente");
+        var function=statements.Single(s=>s.Sql.Contains("CREATE FUNCTION pna.generar_version_fila"));
+        Check(function.Sql.Contains("SECURITY INVOKER") && function.Sql.Contains("SET search_path = pg_catalog"),"Función con privilegios elevados");
+        Check(function.Sql.Contains("pg_catalog.nextval") && function.Sql.Contains("NO CYCLE") && function.Sql.Contains("pg_catalog.decode") && function.Sql.Contains("16, '0'"),"Generador binario/secuencia");
+        Check(!function.Sql.Contains("CREATE OR REPLACE"),"No sobrescribir una función existente");
+        var triggers=statements.Where(s=>s.Sql.Contains("CREATE TRIGGER")).ToArray();
+        Check(triggers.Length==7,"Cantidad de triggers");
+        var model=db.GetService<IDesignTimeModel>().Model;
+        foreach(var entity in model.GetEntityTypes().Where(e=>e.FindProperty("RowVersion")!=null))
+        {
+            var table=entity.GetTableName()!;var column=entity.FindProperty("RowVersion")!.GetColumnName(StoreObjectIdentifier.Table(table,"pna"))!;
+            var trigger=triggers.Single(s=>s.Sql.Contains($"ON pna.\"{table}\""));
+            Check(trigger.Sql.Contains("BEFORE INSERT OR UPDATE") && trigger.Sql.Contains("FOR EACH ROW"),"Eventos: "+table);
+            Check(trigger.Sql.Contains($"generar_version_fila('{column}')"),"Columna/version PascalCase: "+table);
+            Check(tables.Single(t=>t.Name==table).CheckConstraints.Any(c=>c.Sql==$"octet_length(\"{column}\") = 8"),"Longitud: "+table);
+        }
+        var seed=statements.Single(s=>s.Sql.Contains("INSERT INTO pna.categorias_asiento"));
+        Check(seed.Sql.Contains("Primera Clase") && seed.Sql.Contains("Segunda Clase") && seed.Sql.Contains("Tercera Clase"),"Clases iniciales");
+        Check(!seed.Sql.Contains("categoria_id") && !seed.Sql.Contains("row_version"),"ID/versión de catálogo fijados");
+        Check(Array.IndexOf(statements,seed)>Array.IndexOf(statements,triggers.Last()),"Seed antes de triggers");
+        Check(!statements.Any(s=>s.Sql.Contains("INSERT INTO pna.usuarios") || s.Sql.Contains("password_hash")),"Cuentas de laboratorio no autorizadas");
+        Check(statements.Any(s=>s.Sql.Contains("REVOKE ALL ON SCHEMA pna FROM PUBLIC") && s.Sql.Contains("'anon', 'authenticated', 'service_role'")),"Privacidad del esquema");
+        Check(migration.DownOperations.Count==1 && migration.DownOperations.Single() is SqlOperation down && down.Sql.Contains("RAISE EXCEPTION") && !down.Sql.Contains("DROP"),"Rollback destructivo");
+        var migrator=db.GetService<IMigrator>();
+        var script=migrator.GenerateScript("0",entry.Key,MigrationsSqlGenerationOptions.Idempotent);
+        Check(script.Contains("IF NOT EXISTS(SELECT 1 FROM pna.\"__EFMigrationsHistory\""),"Script no idempotente");
+        Check(script.Contains("START TRANSACTION;") && script.Contains("COMMIT;"),"Atomicidad del script");
+        Check(Regex.Matches(script,"CREATE TRIGGER").Count==7 && script.Contains("jsonb_populate_record"),"Script no incluye triggers");
+        Check(!script.Contains("DROP TABLE") && !script.Contains("TRUNCATE") && !script.Contains("[dbo]"),"Script inesperado");
+        var root=Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(AppDbContext).Assembly.Location)!,"..",".."));
+        var saved=File.ReadAllText(Path.Combine(root,"Data/Scripts/Supabase_InicialPostgreSql.sql"));
+        Check(Normalize(script)==Normalize(saved),"El SQL para revisión no coincide con la migración compilada");
+        Check(File.ReadAllText(Path.Combine(root,"Data/Migrations/AppDbContextModelSnapshot.cs")).Contains("SqlServer"),"Snapshot histórico sobrescrito");
+        var verify=Regex.Replace(File.ReadAllText(Path.Combine(root,"Data/Scripts/Supabase_VerificarInstalacion.sql")),@"--[^\n]*","");
+        Check(verify.Split(';',StringSplitOptions.RemoveEmptyEntries).Where(s=>!string.IsNullOrWhiteSpace(s)).All(s=>s.TrimStart().StartsWith("SELECT",StringComparison.OrdinalIgnoreCase)),"Verificación manual debe ser solo lectura");
+        Check(db.Database.GetDbConnection().State==ConnectionState.Closed,"Se abrió una conexión");
+        Console.WriteLine($"OK: {checks} comprobaciones de migración/SQL PostgreSQL; no aplicado ni ejecutado en una base.");
+    }
+}

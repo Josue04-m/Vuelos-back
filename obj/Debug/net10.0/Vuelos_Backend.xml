@@ -4,6 +4,9 @@
         <name>Vuelos_Backend</name>
     </assembly>
     <members>
+        <member name="T:Vuelos_Backend.Configuration.BaseDatosPostgreSql">
+            <summary>Configuración única para ejecución y herramientas EF; no abre conexiones.</summary>
+        </member>
         <member name="M:Vuelos_Backend.Controllers.Administracion.AeropuertosAdminController.Listar(Vuelos_Backend.Models.Catalogos.DTOs.FiltroCatalogoRequest,System.Threading.CancellationToken)">
             <summary>Lista aeropuertos con búsqueda, estado y paginación.</summary>
         </member>
@@ -94,124 +97,19 @@
             <summary>Crea una reserva temporal pendiente de pago. Retiene los asientos hasta FechaExpiracion.</summary>
             <remarks>Las nuevas reservas guardan subtotal después de descuentos, IVA configurable inicialmente 15% y montoTotal final. TotalEsperado debe coincidir con ese total; PayPal cobra montoTotal.</remarks>
         </member>
-        <member name="T:Vuelos_Backend.Data.Migrations.InicialPacificNexus">
+        <member name="T:Vuelos_Backend.Data.AppDbContextFactory">
+            <summary>Permite inspeccionar el modelo con EF sin iniciar la API ni sus workers.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Data.Migrations.PostgreSql.InicialPostgreSql">
             <inheritdoc />
         </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.InicialPacificNexus.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+        <member name="M:Vuelos_Backend.Data.Migrations.PostgreSql.InicialPostgreSql.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
             <inheritdoc />
         </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.InicialPacificNexus.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+        <member name="M:Vuelos_Backend.Data.Migrations.PostgreSql.InicialPostgreSql.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
             <inheritdoc />
         </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.InicialPacificNexus.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="T:Vuelos_Backend.Data.Migrations.TiposPasajeroReservas">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.TiposPasajeroReservas.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.TiposPasajeroReservas.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.TiposPasajeroReservas.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="T:Vuelos_Backend.Data.Migrations.DatosLaboratorioAdminJosue">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.DatosLaboratorioAdminJosue.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.DatosLaboratorioAdminJosue.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.DatosLaboratorioAdminJosue.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="T:Vuelos_Backend.Data.Migrations.NombresPasajerosSeparados">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.NombresPasajerosSeparados.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.NombresPasajerosSeparados.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.NombresPasajerosSeparados.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="T:Vuelos_Backend.Data.Migrations.CatalogosAdministrativos">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.CatalogosAdministrativos.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.CatalogosAdministrativos.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.CatalogosAdministrativos.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="T:Vuelos_Backend.Data.Migrations.ReservasTemporalesCompraSimulada">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.ReservasTemporalesCompraSimulada.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.ReservasTemporalesCompraSimulada.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.ReservasTemporalesCompraSimulada.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="T:Vuelos_Backend.Data.Migrations.PagosPayPal">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.PagosPayPal.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.PagosPayPal.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.PagosPayPal.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="T:Vuelos_Backend.Data.Migrations.AeropuertosDatosCompletos">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.AeropuertosDatosCompletos.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.AeropuertosDatosCompletos.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.AeropuertosDatosCompletos.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="T:Vuelos_Backend.Data.Migrations.AvionesDatosCompletos">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.AvionesDatosCompletos.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.AvionesDatosCompletos.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.AvionesDatosCompletos.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="T:Vuelos_Backend.Data.Migrations.DesgloseIvaReservas">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.DesgloseIvaReservas.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.DesgloseIvaReservas.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
-            <inheritdoc />
-        </member>
-        <member name="M:Vuelos_Backend.Data.Migrations.DesgloseIvaReservas.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+        <member name="M:Vuelos_Backend.Data.Migrations.PostgreSql.InicialPostgreSql.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
             <inheritdoc />
         </member>
         <member name="M:Vuelos_Backend.Integrations.EcuadorLegal.EcuadorLegalNombreExtractor.Celdas">
@@ -353,24 +251,6 @@
         <member name="M:Vuelos_Backend.Interface.Catalogos.IBusquedaCatalogosRepository.ObtenerAeropuertoAsync(System.Int32,System.Threading.CancellationToken)">
             <summary>Incluye aeropuertos inactivos para poder rotular vuelos históricos.</summary>
         </member>
-        <member name="T:Vuelos_Backend.Models.Asientos.DTOs.CategoriaAsientoResponse">
-            <summary>Categoría del asiento físico.</summary>
-        </member>
-        <member name="M:Vuelos_Backend.Models.Asientos.DTOs.CategoriaAsientoResponse.#ctor(System.Int32,System.String,System.String)">
-            <summary>Categoría del asiento físico.</summary>
-        </member>
-        <member name="T:Vuelos_Backend.Models.Asientos.DTOs.AsientoVueloResponse">
-            <summary>Asiento por vuelo. RowVersion es Base64; Disponible también considera el estado y la salida del vuelo.</summary>
-        </member>
-        <member name="M:Vuelos_Backend.Models.Asientos.DTOs.AsientoVueloResponse.#ctor(System.Int32,System.String,Vuelos_Backend.Models.Asientos.DTOs.CategoriaAsientoResponse,System.Decimal,System.String,System.String,System.Boolean,System.String)">
-            <summary>Asiento por vuelo. RowVersion es Base64; Disponible también considera el estado y la salida del vuelo.</summary>
-        </member>
-        <member name="T:Vuelos_Backend.Models.Asientos.DTOs.AsientosVueloResponse">
-            <summary>Disponibilidad informativa y tarifas actuales en dólares estadounidenses.</summary>
-        </member>
-        <member name="M:Vuelos_Backend.Models.Asientos.DTOs.AsientosVueloResponse.#ctor(System.Int32,System.String,System.String,System.Boolean,System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Asientos.DTOs.AsientoVueloResponse})">
-            <summary>Disponibilidad informativa y tarifas actuales en dólares estadounidenses.</summary>
-        </member>
         <member name="T:Vuelos_Backend.Models.Autenticacion.DTOs.LoginRequest">
             <summary>Credenciales para iniciar una sesión.</summary>
         </member>
@@ -400,39 +280,6 @@
         </member>
         <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.FiltroCatalogoRequest">
             <summary>Filtros administrativos. Activo=true por defecto; IncluirInactivos=true incluye ambos estados. AvionId solo para asientos físicos.</summary>
-        </member>
-        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.DesactivarCatalogoRequest">
-            <summary>Versión vigente necesaria para desactivar un elemento.</summary>
-        </member>
-        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.GuardarAeropuertoRequest">
-            <summary>Crear o editar un aeropuerto. RowVersion se exige en edición y se omite al crear.</summary>
-        </member>
-        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.CrearAvionRequest">
-            <summary>Crea el avión y genera todos sus asientos físicos en una transacción.</summary>
-        </member>
-        <member name="P:Vuelos_Backend.Models.Catalogos.DTOs.CrearAvionRequest.CapacidadTotal">
-            <summary>Número exacto de asientos a generar; máximo técnico de 1000 por operación.</summary>
-        </member>
-        <member name="P:Vuelos_Backend.Models.Catalogos.DTOs.CrearAvionRequest.CategoriaId">
-            <summary>Compatibilidad: categoría única. Use DistribucionClases para distribuir varias clases; no combine ambas opciones.</summary>
-        </member>
-        <member name="P:Vuelos_Backend.Models.Catalogos.DTOs.CrearAvionRequest.DistribucionClases">
-            <summary>Categorías y cantidades, en orden de generación; su suma debe ser igual a CapacidadTotal.</summary>
-        </member>
-        <member name="P:Vuelos_Backend.Models.Catalogos.DTOs.CrearAvionRequest.LetrasPorFila">
-            <summary>ABC produce 1A, 1B, 1C, 2A... Vacío o null produce 1, 2, 3... No repetir letras.</summary>
-        </member>
-        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.DistribucionClaseRequest">
-            <summary>Cantidad de asientos de una clase del catálogo (Primera, Segunda o Tercera Clase).</summary>
-        </member>
-        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.GuardarAvionRequest">
-            <summary>Edita los datos del avión; no regenera ni elimina asientos.</summary>
-        </member>
-        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.GuardarCategoriaRequest">
-            <summary>Crear o editar una categoría de asiento.</summary>
-        </member>
-        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.GuardarAsientoFisicoRequest">
-            <summary>Crear o editar un asiento físico del avión, sin precio ni disponibilidad por vuelo.</summary>
         </member>
         <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.PaginaCatalogoResponse`1">
             <summary>Página de un catálogo administrativo.</summary>
@@ -738,7 +585,7 @@
             <summary>Consultas de solo lectura que proyectan pocas columnas; nunca cargan DatosOrigenJson ni otros metadatos pesados.</summary>
         </member>
         <member name="T:Vuelos_Backend.Services.Catalogos.CreacionAviones">
-            <summary>Creación compartida por alta individual e importación; el llamador mantiene la transacción administrativa.</summary>
+            <summary>Genera aviones y asientos para la carga CSV dentro de la transaccion administrativa.</summary>
         </member>
         <member name="T:Vuelos_Backend.Services.Pagos.ConciliacionPayPalWorker">
             <summary>Solo consulta órdenes: nunca inicia capturas ni nuevos cobros.</summary>

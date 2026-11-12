@@ -22,7 +22,9 @@ public static class CorsFlutter
 
     public static void UsarCorsFlutter(this WebApplication app)
     {
-        if (!app.Environment.IsDevelopment()) app.UseHttpsRedirection();
+        // Activar solo cuando el proxy externo, como Render, impone HTTPS.
+        if (!app.Environment.IsDevelopment() && !app.Configuration.GetValue<bool>("Hosting:HttpsEnProxy"))
+            app.UseHttpsRedirection();
         app.UseRouting();
         app.UseCors(Politica);
     }

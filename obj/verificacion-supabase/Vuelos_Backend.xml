@@ -1,0 +1,835 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Vuelos_Backend</name>
+    </assembly>
+    <members>
+        <member name="T:Vuelos_Backend.Configuration.BaseDatosPostgreSql">
+            <summary>Configuración única para ejecución y herramientas EF; no abre conexiones.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.AeropuertosAdminController.Listar(Vuelos_Backend.Models.Catalogos.DTOs.FiltroCatalogoRequest,System.Threading.CancellationToken)">
+            <summary>Lista aeropuertos con búsqueda, estado y paginación.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.AeropuertosAdminController.Obtener(System.Int32,System.Threading.CancellationToken)">
+            <summary>Consulta un elemento, incluidos los inactivos, y su versión vigente.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.AsientosFisicosAdminController.Listar(Vuelos_Backend.Models.Catalogos.DTOs.FiltroCatalogoRequest,System.Threading.CancellationToken)">
+            <summary>Lista asientos físicos con búsqueda, estado y paginación.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.AsientosFisicosAdminController.Obtener(System.Int32,System.Threading.CancellationToken)">
+            <summary>Consulta un elemento, incluidos los inactivos, y su versión vigente.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.AvionesAdminController.Listar(Vuelos_Backend.Models.Catalogos.DTOs.FiltroCatalogoRequest,System.Threading.CancellationToken)">
+            <summary>Lista aviones con búsqueda, estado y paginación.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.AvionesAdminController.Obtener(System.Int32,System.Threading.CancellationToken)">
+            <summary>Consulta un elemento, incluidos los inactivos, y su versión vigente.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.CategoriasAsientoAdminController.Listar(Vuelos_Backend.Models.Catalogos.DTOs.FiltroCatalogoRequest,System.Threading.CancellationToken)">
+            <summary>Lista categorías de asiento con búsqueda, estado y paginación.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.CategoriasAsientoAdminController.Obtener(System.Int32,System.Threading.CancellationToken)">
+            <summary>Consulta un elemento, incluidos los inactivos, y su versión vigente.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.ImportacionAeropuertosController.Validar(Vuelos_Backend.Models.Catalogos.DTOs.ImportarAeropuertosRequest,System.Threading.CancellationToken)">
+            <summary>Valida airports.csv sin guardar. Vista previa paginada con filtros, omisiones y errores.</summary>
+            <remarks>CSV UTF-8 con comas y encabezados originales. Máximo 20 MiB, 150000 registros y 20000 importables. Por defecto solo servicio regular; sin IATA se omite. Incompletos bloquean salvo autorización explícita. La vista previa devuelve hasta 200 filas por página y hasta 200 errores.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.ImportacionAeropuertosController.Importar(Vuelos_Backend.Models.Catalogos.DTOs.ImportarAeropuertosRequest,System.Threading.CancellationToken)">
+            <summary>Importa toda la selección en una transacción. No sobrescribe ni duplica códigos IATA existentes.</summary>
+            <remarks>Reenviar archivo y filtros revisados. Pagina/TamanoPagina afectan solo la respuesta. 200 importado/ya_importados; 400 errores; 409 códigos parcialmente registrados. No importa únicamente la página visible.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.ImportacionAvionesController.Validar(Vuelos_Backend.Models.Catalogos.DTOs.ImportarAvionesRequest,System.Threading.CancellationToken)">
+            <summary>Valida CSV y categorías, sin guardar datos. Devuelve filas, errores y matrículas registradas.</summary>
+            <remarks>CSV UTF-8 con ; y encabezados. Máximo 1 MiB, 500 aviones y 100000 asientos. No certifica capacidades reales. Puede devolver ya_importados sin crear registros.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.ImportacionAvionesController.Importar(Vuelos_Backend.Models.Catalogos.DTOs.ImportarAvionesRequest,System.Threading.CancellationToken)">
+            <summary>Importa todo el CSV y genera asientos en una transacción. Repetir matrículas no crea duplicados.</summary>
+            <remarks>Revalida bajo bloqueo administrativo. 200: importado o ya_importados; 400: errores de datos; 409: algunas matrículas ya existen. Reenviar el mismo archivo y las clases de la vista previa.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.VentasAdminController.Obtener(Vuelos_Backend.Models.Ventas.DTOs.FiltroVentasRequest,System.Threading.CancellationToken)">
+            <summary>Consulta el total acumulado en USD y la cantidad de capturas PayPal confirmadas por entorno.</summary>
+            <remarks>Por defecto Sandbox. Entorno=Live consulta cobros reales. Total bruto histórico; no descuenta reembolsos.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.VuelosAdminController.Buscar(Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest,System.Threading.CancellationToken)">
+            <summary>Lista vuelos de todos los estados, con filtros y paginación.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.VuelosAdminController.Obtener(System.Int32,System.Threading.CancellationToken)">
+            <summary>Consulta un vuelo y la versión necesaria para editar su programación.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.VuelosAdminController.CambiarAvion(System.Int32,Vuelos_Backend.Models.Vuelos.DTOs.CambiarAvionVueloRequest,System.Threading.CancellationToken)">
+            <summary>Cambia el avión de un vuelo sin retenciones vigentes, compras ni reservas antiguas; aplica tarifas por clase.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.VuelosAdminController.ListarAsientos(System.Int32,System.Threading.CancellationToken)">
+            <summary>Lista todos los asientos del vuelo con su disponibilidad, precio base y estado de reserva.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.VuelosAdminController.ActualizarAsiento(System.Int32,System.Int32,Vuelos_Backend.Models.Vuelos.DTOs.ActualizarAsientoVueloAdminRequest,System.Threading.CancellationToken)">
+            <summary>Actualiza el precio base o la disponibilidad (bloqueo/desbloqueo) de un asiento del vuelo.</summary>
+            <remarks>No permite cambiar la disponibilidad de asientos con reservas activas. Exige RowVersion en Base64.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Catalogos.CatalogosBusquedaController.BuscarAeropuertos(Vuelos_Backend.Models.Catalogos.DTOs.BusquedaCatalogoRequest,System.Threading.CancellationToken)">
+            <summary>Busca aeropuertos activos para un selector. Q busca por IATA, ICAO, nombre, ciudad o país; varias palabras deben coincidir todas.</summary>
+            <remarks>Devuelve como máximo 50 resultados con datos mínimos. No descargue el catálogo completo: filtre en el servidor.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Catalogos.CatalogosBusquedaController.ObtenerAeropuerto(System.Int32,System.Threading.CancellationToken)">
+            <summary>Consulta un aeropuerto por ID, también inactivo, para rotular un vuelo o una selección guardada.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Catalogos.CatalogosBusquedaController.BuscarAviones(Vuelos_Backend.Models.Catalogos.DTOs.BusquedaCatalogoRequest,System.Threading.CancellationToken)">
+            <summary>Busca aviones activos para un selector. Q busca por modelo, matrícula, IATA o ICAO.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Pagos.PayPalController.Crear(System.Int32,Vuelos_Backend.Models.Pagos.CrearOrdenPayPalRequest,System.Threading.CancellationToken)">
+            <summary>Crea una orden PayPal por el total USD de la reserva propia. Abra UrlAprobacion para autorizarla.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Pagos.PayPalController.Capturar(System.Int32,System.Threading.CancellationToken)">
+            <summary>Captura la orden aprobada de la reserva propia. El retorno del navegador no acredita el pago.</summary>
+            <remarks>Es idempotente. Ante estado pendiente o revision consulte el pago; no cree una segunda compra.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Pagos.PayPalController.Obtener(System.Int32,System.Threading.CancellationToken)">
+            <summary>Consulta el pago propio y concilia capturas inciertas con PayPal.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Pagos.PayPalController.Conciliar(System.Guid,System.Threading.CancellationToken)">
+            <summary>Concilia un pago con PayPal sin iniciar un cobro. Solo administrador.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Pagos.PayPalController.Webhook(System.Text.Json.JsonElement,System.Threading.CancellationToken)">
+            <summary>Recibe notificaciones PayPal verificadas mediante su API oficial. No requiere token del usuario.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Reservas.ReservasController.Crear(Vuelos_Backend.Models.Reservas.DTOs.CrearReservaRequest,System.Threading.CancellationToken)">
+            <summary>Crea una reserva temporal pendiente de pago. Retiene los asientos hasta FechaExpiracion.</summary>
+            <remarks>Las nuevas reservas guardan subtotal después de descuentos, IVA configurable inicialmente 15% y montoTotal final. TotalEsperado debe coincidir con ese total; PayPal cobra montoTotal.</remarks>
+        </member>
+        <member name="T:Vuelos_Backend.Data.AppDbContextFactory">
+            <summary>Permite inspeccionar el modelo con EF sin iniciar la API ni sus workers.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Data.Migrations.PostgreSql.InicialPostgreSql">
+            <inheritdoc />
+        </member>
+        <member name="M:Vuelos_Backend.Data.Migrations.PostgreSql.InicialPostgreSql.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Vuelos_Backend.Data.Migrations.PostgreSql.InicialPostgreSql.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Vuelos_Backend.Data.Migrations.PostgreSql.InicialPostgreSql.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Vuelos_Backend.Integrations.EcuadorLegal.EcuadorLegalNombreExtractor.Celdas">
+            <remarks>
+            Pattern:<br/>
+            <code>&lt;td\\b(?&lt;atributos&gt;(?:[^"'&lt;&gt;]|"[^"]*"|'[^']*')*)&gt;(?&lt;texto&gt;.*?)&lt;/td\\s*&gt;</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase | RegexOptions.Singleline</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match '&lt;'.<br/>
+            ○ Match a character in the set [Tt].<br/>
+            ○ Match a character in the set [Dd].<br/>
+            ○ Match if at a word boundary.<br/>
+            ○ "atributos" capture group.<br/>
+                ○ Loop greedily any number of times.<br/>
+                    ○ Match with 3 alternative expressions.<br/>
+                        ○ Match a character in the set [^"'&lt;&gt;].<br/>
+                        ○ Match a sequence of expressions.<br/>
+                            ○ Match '"'.<br/>
+                            ○ Match a character other than '"' atomically any number of times.<br/>
+                            ○ Match '"'.<br/>
+                        ○ Match a sequence of expressions.<br/>
+                            ○ Match '\''.<br/>
+                            ○ Match a character other than '\'' atomically any number of times.<br/>
+                            ○ Match '\''.<br/>
+            ○ Match '&gt;'.<br/>
+            ○ "texto" capture group.<br/>
+                ○ Match any character lazily any number of times.<br/>
+            ○ Match the string "&lt;/".<br/>
+            ○ Match a character in the set [Tt].<br/>
+            ○ Match a character in the set [Dd].<br/>
+            ○ Match a whitespace character atomically any number of times.<br/>
+            ○ Match '&gt;'.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Integrations.EcuadorLegal.EcuadorLegalNombreExtractor.Identificador">
+            <remarks>
+            Pattern:<br/>
+            <code>(?:^|\\s)id\\s*=\\s*(?:"(?&lt;id&gt;[^"]+)"|'(?&lt;id&gt;[^']+)'|(?&lt;id&gt;[^\\s&gt;]+))</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match with 2 alternative expressions.<br/>
+                ○ Match if at the beginning of the string.<br/>
+                ○ Match a whitespace character.<br/>
+            ○ Match a character in the set [Ii].<br/>
+            ○ Match a character in the set [Dd].<br/>
+            ○ Match a whitespace character atomically any number of times.<br/>
+            ○ Match '='.<br/>
+            ○ Match a whitespace character greedily any number of times.<br/>
+            ○ Match with 3 alternative expressions, atomically.<br/>
+                ○ Match a sequence of expressions.<br/>
+                    ○ Match '"'.<br/>
+                    ○ "id" capture group.<br/>
+                        ○ Match a character other than '"' atomically at least once.<br/>
+                    ○ Match '"'.<br/>
+                ○ Match a sequence of expressions.<br/>
+                    ○ Match '\''.<br/>
+                    ○ "id" capture group.<br/>
+                        ○ Match a character other than '\'' atomically at least once.<br/>
+                    ○ Match '\''.<br/>
+                ○ "id" capture group.<br/>
+                    ○ Match a character in the set [^&gt;\s] atomically at least once.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Integrations.EcuadorLegal.EcuadorLegalNombreExtractor.CedulaId">
+            <remarks>
+            Pattern:<br/>
+            <code>\\Aci[0-9]+\\z</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match if at the beginning of the string.<br/>
+            ○ Match the string "ci".<br/>
+            ○ Match a character in the set [0-9] atomically at least once.<br/>
+            ○ Match if at the end of the string.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Integrations.EcuadorLegal.EcuadorLegalNombreExtractor.Etiquetas">
+            <remarks>
+            Pattern:<br/>
+            <code>&lt;[^&gt;]+&gt;</code><br/>
+            Options:<br/>
+            <code>RegexOptions.Singleline</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match '&lt;'.<br/>
+            ○ Match a character other than '&gt;' atomically at least once.<br/>
+            ○ Match '&gt;'.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Integrations.EcuadorLegal.EcuadorLegalNombreExtractor.Resaltado">
+            <remarks>
+            Pattern:<br/>
+            <code>&lt;strong\\b[^&gt;]*&gt;(?&lt;texto&gt;.*?)&lt;/strong\\s*&gt;</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase | RegexOptions.Singleline</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match '&lt;'.<br/>
+            ○ Match a character in the set [Ss].<br/>
+            ○ Match a character in the set [Tt].<br/>
+            ○ Match a character in the set [Rr].<br/>
+            ○ Match a character in the set [Oo].<br/>
+            ○ Match a character in the set [Nn].<br/>
+            ○ Match a character in the set [Gg].<br/>
+            ○ Match if at a word boundary.<br/>
+            ○ Match a character other than '&gt;' atomically any number of times.<br/>
+            ○ Match '&gt;'.<br/>
+            ○ "texto" capture group.<br/>
+                ○ Match any character lazily any number of times.<br/>
+            ○ Match the string "&lt;/".<br/>
+            ○ Match a character in the set [Ss].<br/>
+            ○ Match a character in the set [Tt].<br/>
+            ○ Match a character in the set [Rr].<br/>
+            ○ Match a character in the set [Oo].<br/>
+            ○ Match a character in the set [Nn].<br/>
+            ○ Match a character in the set [Gg].<br/>
+            ○ Match a whitespace character atomically any number of times.<br/>
+            ○ Match '&gt;'.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Integrations.EcuadorLegal.EcuadorLegalNombreExtractor.Espacios">
+            <remarks>
+            Pattern:<br/>
+            <code>\\s+</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match a whitespace character atomically at least once.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Interface.Catalogos.IBusquedaCatalogosRepository.ObtenerAeropuertoAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>Incluye aeropuertos inactivos para poder rotular vuelos históricos.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Autenticacion.DTOs.LoginRequest">
+            <summary>Credenciales para iniciar una sesión.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Autenticacion.DTOs.LoginResponse">
+            <summary>Token de la nueva sesión y su expiración UTC; solo se devuelve en login.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Autenticacion.DTOs.LoginResponse.#ctor(System.String,System.String,System.DateTimeOffset,Vuelos_Backend.Models.Usuarios.DTOs.UsuarioResponse)">
+            <summary>Token de la nueva sesión y su expiración UTC; solo se devuelve en login.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.BusquedaCatalogoRequest">
+            <summary>Búsqueda ligera para selectores. Q admite varias palabras; todas deben coincidir. Sin Q devuelve los primeros resultados.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Catalogos.DTOs.BusquedaCatalogoRequest.Limite">
+            <summary>Máximo de resultados (1 a 50 en aeropuertos, 1 a 100 en aviones).</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.AeropuertoResumenResponse">
+            <summary>Aeropuerto activo en formato mínimo para selectores. No incluye metadatos de importación.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.AeropuertoResumenResponse.#ctor(System.Int32,System.String,System.String,System.String,System.String,System.String)">
+            <summary>Aeropuerto activo en formato mínimo para selectores. No incluye metadatos de importación.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.AvionResumenResponse">
+            <summary>Avión activo en formato mínimo para selectores.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.AvionResumenResponse.#ctor(System.Int32,System.String,System.String,System.Int32)">
+            <summary>Avión activo en formato mínimo para selectores.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.FiltroCatalogoRequest">
+            <summary>Filtros administrativos. Activo=true por defecto; IncluirInactivos=true incluye ambos estados. AvionId solo para asientos físicos.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.PaginaCatalogoResponse`1">
+            <summary>Página de un catálogo administrativo.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.PaginaCatalogoResponse`1.#ctor(System.Collections.Generic.IReadOnlyList{`0},System.Int32,System.Int32,System.Int32,System.Int32)">
+            <summary>Página de un catálogo administrativo.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.AeropuertoAdminResponse">
+            <summary>Aeropuerto administrativo, con estado y versión.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.AeropuertoAdminResponse.#ctor(System.Int32,System.String,System.String,System.String,System.String,System.Boolean,System.Nullable{System.DateTimeOffset},System.String,Vuelos_Backend.Models.Catalogos.DTOs.MetadatosAeropuertoResponse)">
+            <summary>Aeropuerto administrativo, con estado y versión.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.AvionAdminResponse">
+            <summary>Avión administrativo, con estado y versión.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.AvionAdminResponse.#ctor(System.Int32,System.String,System.String,System.Int32,System.Boolean,System.Nullable{System.DateTimeOffset},System.String,Vuelos_Backend.Models.Catalogos.DTOs.MetadatosAvionResponse)">
+            <summary>Avión administrativo, con estado y versión.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.CategoriaAdminResponse">
+            <summary>Categoría administrativa, con estado y versión.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.CategoriaAdminResponse.#ctor(System.Int32,System.String,System.String,System.Boolean,System.Nullable{System.DateTimeOffset},System.String)">
+            <summary>Categoría administrativa, con estado y versión.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.AsientoFisicoAdminResponse">
+            <summary>Asiento físico administrativo, con estado y versión.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.AsientoFisicoAdminResponse.#ctor(System.Int32,System.Int32,System.Int32,System.String,System.Boolean,System.Nullable{System.DateTimeOffset},System.String)">
+            <summary>Asiento físico administrativo, con estado y versión.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.ImportarAeropuertosRequest">
+            <summary>Archivo airports.csv con columnas originales, filtros y página de vista previa. La confirmación procesa todos los seleccionados, no solo la página.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.FilaImportacionAeropuertoResponse">
+            <summary>Aeropuerto válido del archivo; el país se conserva como código ISO de dos letras.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.FilaImportacionAeropuertoResponse.#ctor(System.Int32,System.String,System.String,System.String,System.String,System.Boolean,System.Nullable{System.Int32},Vuelos_Backend.Models.Catalogos.DTOs.MetadatosAeropuertoResponse)">
+            <summary>Aeropuerto válido del archivo; el país se conserva como código ISO de dos letras.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.ErrorImportacionAeropuertoResponse">
+            <summary>Error localizado por línea física inicial del registro. Fila 1 representa encabezados o límites globales.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.ErrorImportacionAeropuertoResponse.#ctor(System.Int32,System.String,System.String)">
+            <summary>Error localizado por línea física inicial del registro. Fila 1 representa encabezados o límites globales.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.ImportacionAeropuertosResponse">
+            <summary>Resultado global con vista previa paginada, conteo explícito de omisiones y hasta 200 errores.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.ImportacionAeropuertosResponse.#ctor(System.String,System.String,System.Boolean,System.Int32,System.Int32,System.Int32,System.Int32,System.Boolean,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Catalogos.DTOs.FilaImportacionAeropuertoResponse},System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Catalogos.DTOs.ErrorImportacionAeropuertoResponse},System.Collections.Generic.IReadOnlyDictionary{System.String,System.Int32})">
+            <summary>Resultado global con vista previa paginada, conteo explícito de omisiones y hasta 200 errores.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.ImportarAvionesRequest">
+            <summary>CSV UTF-8 separado por punto y coma y categorías activas elegidas por el administrador.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.ErrorImportacionAvionResponse">
+            <summary>Error localizado por línea física de inicio del registro; fila 1 corresponde a encabezados/configuración.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.ErrorImportacionAvionResponse.#ctor(System.Int32,System.String,System.String)">
+            <summary>Error localizado por línea física de inicio del registro; fila 1 corresponde a encabezados/configuración.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.FilaImportacionAvionResponse">
+            <summary>Fila normalizada, existente o pendiente de crear. Guarda códigos, distribución y valores originales del CSV.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.FilaImportacionAvionResponse.#ctor(System.Int32,System.String,System.String,System.Int32,System.Int32,System.Int32,System.Int32,System.String,System.String,System.String,System.Boolean,System.Nullable{System.Int32},System.String)">
+            <summary>Fila normalizada, existente o pendiente de crear. Guarda códigos, distribución y valores originales del CSV.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.ImportacionAvionesResponse">
+            <summary>Vista previa o resultado atómico. Ya importados y conflictos nunca crean registros.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.ImportacionAvionesResponse.#ctor(System.String,System.String,System.Boolean,System.Int32,System.Int32,System.Int32,System.Int32,System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Catalogos.DTOs.FilaImportacionAvionResponse},System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Catalogos.DTOs.ErrorImportacionAvionResponse},System.Collections.Generic.IReadOnlyList{System.String})">
+            <summary>Vista previa o resultado atómico. Ya importados y conflictos nunca crean registros.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.MetadatosAeropuertoResponse">
+            <summary>Campos adicionales del CSV. DatosOrigenJson conserva los valores originales de todas las columnas, incluidas las base, sin inventar metadatos de registros antiguos.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.MetadatosAeropuertoResponse.#ctor(System.Nullable{System.Int64},System.String,System.String,System.Nullable{System.Double},System.Nullable{System.Double},System.Nullable{System.Double},System.String,System.String,System.Nullable{System.Boolean},System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
+            <summary>Campos adicionales del CSV. DatosOrigenJson conserva los valores originales de todas las columnas, incluidas las base, sin inventar metadatos de registros antiguos.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.MetadatosAvionResponse">
+            <summary>Configuración y códigos del avión importado. JSON conserva los nueve valores originales del CSV; null indica datos no cargados, no cero.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.MetadatosAvionResponse.#ctor(System.String,System.String,System.Nullable{System.Int32},System.Nullable{System.Int32},System.Nullable{System.Int32},System.String,System.String)">
+            <summary>Configuración y códigos del avión importado. JSON conserva los nueve valores originales del CSV; null indica datos no cargados, no cero.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Pasajeros.DTOs.ConsultaCedulaResponse">
+            <summary>Datos sugeridos para autocompletar. Revisar nombres y apellidos compuestos antes de guardar.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Pasajeros.DTOs.ConsultaCedulaResponse.#ctor(System.String,System.String,System.String,System.String,System.String,System.String,System.Boolean)">
+            <summary>Datos sugeridos para autocompletar. Revisar nombres y apellidos compuestos antes de guardar.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.BusquedaReservasRequest">
+            <summary>Filtros de reservas propias por estado y fecha de creación UTC.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.CambioAsientoRequest">
+            <summary>Nuevo asiento para un detalle activo; el pasajero y su tipo se conservan.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.CambiarAsientosRequest">
+            <summary>Cambios de asiento atómicos. Los detalles no incluidos conservan su tarifa congelada.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Reservas.DTOs.CambiarAsientosRequest.TotalEsperado">
+            <summary>Total final incluido IVA si la reserva tiene desglose; las reservas históricas conservan el cálculo anterior.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.CancelarReservaRequest">
+            <summary>Versión de la reserva que se desea cancelar.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.CompraSimuladaResponse">
+            <summary>Comprobante exclusivamente simulado. No acredita un cobro real.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.DTOs.CompraSimuladaResponse.#ctor(System.Guid,System.DateTimeOffset,System.Decimal,System.String,System.Boolean)">
+            <summary>Comprobante exclusivamente simulado. No acredita un cobro real.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.PasajeroReservaRequest">
+            <summary>Pasajero con asiento propio, incluidos bebés. No se solicita fecha de nacimiento.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.CrearReservaRequest">
+            <summary>Reserva de un vuelo, realizada por el usuario de la sesión, viaje o no ese usuario.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Reservas.DTOs.CrearReservaRequest.TotalEsperado">
+            <summary>Total final en USD, incluido el IVA del laboratorio; no el subtotal de los pasajeros.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.DetalleReservaResponse">
+            <summary>Asignación activa o liberada de un pasajero; los importes son los congelados.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.DTOs.DetalleReservaResponse.#ctor(System.Int32,System.Int32,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.Decimal,System.String,System.String)">
+            <summary>Asignación activa o liberada de un pasajero; los importes son los congelados.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.HistorialReservaResponse">
+            <summary>Evento de cambio de asiento o cancelación; no se elimina el historial.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.DTOs.HistorialReservaResponse.#ctor(System.Int32,System.String,System.DateTimeOffset,System.Nullable{System.Int32},System.Nullable{System.Int32},System.String)">
+            <summary>Evento de cambio de asiento o cancelación; no se elimina el historial.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.ReservaResponse">
+            <summary>Reserva propia con detalles, historial, total USD y versión actual.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.DTOs.ReservaResponse.#ctor(System.Int32,System.String,System.Int32,System.String,System.DateTimeOffset,System.Decimal,System.String,System.String,System.String,System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Reservas.DTOs.DetalleReservaResponse},System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Reservas.DTOs.HistorialReservaResponse},System.Nullable{System.DateTimeOffset},System.Boolean,Vuelos_Backend.Models.Reservas.DTOs.CompraSimuladaResponse,System.Nullable{System.Decimal},System.Nullable{System.Decimal},System.Nullable{System.Decimal})">
+            <summary>Reserva propia con detalles, historial, total USD y versión actual.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.ReservaResumenResponse">
+            <summary>Resumen de una reserva propia, sin datos de pasajeros.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.DTOs.ReservaResumenResponse.#ctor(System.Int32,System.String,System.Int32,System.String,System.DateTimeOffset,System.Decimal,System.String,System.String,System.String,System.Nullable{System.DateTimeOffset},System.Boolean,System.Nullable{System.Decimal},System.Nullable{System.Decimal},System.Nullable{System.Decimal})">
+            <summary>Resumen de una reserva propia, sin datos de pasajeros.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.DTOs.PaginaReservasResponse">
+            <summary>Página de reservas del usuario autenticado.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.DTOs.PaginaReservasResponse.#ctor(System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Reservas.DTOs.ReservaResumenResponse},System.Int32,System.Int32,System.Int32,System.Int32)">
+            <summary>Página de reservas del usuario autenticado.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Reservas.ImportesReserva">
+            <summary>Desglose del laboratorio en USD. Los precios de pasajeros ya incluyen sus descuentos, pero no este IVA.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Reservas.ImportesReserva.#ctor(System.Decimal,System.Decimal,System.Decimal,System.Decimal)">
+            <summary>Desglose del laboratorio en USD. Los precios de pasajeros ya incluyen sus descuentos, pero no este IVA.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Usuarios.DTOs.RegistroUsuarioRequest">
+            <summary>Datos para registrar un cliente. El rol lo asigna el servidor.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Usuarios.DTOs.UsuarioResponse">
+            <summary>Información pública del cliente registrado.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Usuarios.DTOs.UsuarioResponse.#ctor(System.Int32,System.String,System.String,System.String)">
+            <summary>Información pública del cliente registrado.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Ventas.DTOs.FiltroVentasRequest">
+            <summary>Rango opcional de fechas de compra en UTC; ambos días se incluyen.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Ventas.DTOs.ResumenVentasResponse">
+            <summary>Capturas PayPal confirmadas, separadas por entorno. Importe bruto histórico, sin descontar reembolsos.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Ventas.DTOs.ResumenVentasResponse.#ctor(System.Decimal,System.Int64,System.String,System.String,System.String,System.Boolean,System.Nullable{System.DateOnly},System.Nullable{System.DateOnly})">
+            <summary>Capturas PayPal confirmadas, separadas por entorno. Importe bruto histórico, sin descontar reembolsos.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.AsientoVueloAdminResponse">
+            <summary>Información administrativa de un asiento asignado a un vuelo.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.AsientoVueloAdminResponse.#ctor(System.Int32,System.Int32,System.String,System.String,System.Decimal,System.String,System.String,System.Boolean)">
+            <summary>Información administrativa de un asiento asignado a un vuelo.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.ActualizarAsientoVueloAdminRequest">
+            <summary>Actualización de precio o bloqueo de un asiento por vuelo.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.ActualizarAsientoVueloAdminRequest.Precio">
+            <summary>Precio base en USD para futuras reservas del asiento en este vuelo.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.ActualizarAsientoVueloAdminRequest.Estado">
+            <summary>Disponibilidad operativa: disponible o bloqueado.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.ActualizarAsientoVueloAdminRequest.RowVersion">
+            <summary>RowVersion del asiento en Base64 para control de concurrencia optimista.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest">
+            <summary>Filtros opcionales de salida UTC. Usar fecha o un rango completo, sin combinarlos.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.Origen">
+            <summary>Código IATA de origen, por ejemplo GYE; no distingue mayúsculas.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.Destino">
+            <summary>Código IATA de destino, por ejemplo UIO.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.Fecha">
+            <summary>Día UTC de salida, formato YYYY-MM-DD.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.FechaDesde">
+            <summary>Primer día UTC del rango, incluido.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.FechaHasta">
+            <summary>Último día UTC del rango, incluido.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.Pagina">
+            <summary>Página desde 1, ordenada por salida e identificador.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest.TamanoPagina">
+            <summary>Elementos por página: entre 1 y 100, por defecto 20.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.CambiarEstadoVueloAdminRequest">
+            <summary>Solicitud administrativa para cambiar el estado operativo de un vuelo.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.CambiarEstadoVueloAdminRequest.NuevoEstado">
+            <summary>Nuevo estado operativo: programado, embarcando, retrasado, en vuelo, finalizado o cancelado.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.CambiarEstadoVueloAdminRequest.Version">
+            <summary>Versión del vuelo obtenida del último GET administrativo para evitar colisiones.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.CambiarEstadoVueloAdminRequest.Observacion">
+            <summary>Observación opcional para registrar en el historial de estados.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.CambiarEstadoVueloAdminRequest.SalidaReal">
+            <summary>Solo al pasar a en vuelo. No futura, con zona explícita. Si se omite se usa la hora UTC actual.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.CambiarEstadoVueloAdminRequest.LlegadaReal">
+            <summary>Solo al finalizar. No futura y posterior a la salida, con zona explícita. Por defecto hora UTC actual.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.CrearVueloAdminRequest">
+            <summary>Creación de un vuelo programado y todos los asientos físicos de su avión, con precios en USD.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.PrecioClaseAdminRequest">
+            <summary>Precio base en USD de todos los asientos de una categoría para este vuelo.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.CambiarAvionVueloRequest">
+            <summary>Cambio de avión antes de cualquier reserva, con tarifas para las clases del avión nuevo.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.EditarVueloAdminRequest">
+            <summary>Edición completa de la programación. No cambia avión, asientos, precios ni estado.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.EditarVueloAdminRequest.Version">
+            <summary>Versión obtenida del último GET administrativo; evita sobrescribir otra edición.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.HistorialEstadoVueloAdminResponse">
+            <summary>Registro histórico de cambio de estado operativo del vuelo.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.HistorialEstadoVueloAdminResponse.#ctor(System.Int32,System.Int32,System.String,System.String,System.DateTimeOffset,System.Int32,System.String,System.String)">
+            <summary>Registro histórico de cambio de estado operativo del vuelo.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.PasajeroVueloAdminResponse">
+            <summary>Detalle de pasajero en una reserva de vuelo para administración.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.PasajeroVueloAdminResponse.#ctor(System.Int32,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.Decimal,System.String)">
+            <summary>Detalle de pasajero en una reserva de vuelo para administración.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.ReservaVueloAdminResponse">
+            <summary>Reserva de un vuelo consultada desde la administración.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.ReservaVueloAdminResponse.#ctor(System.Int32,System.String,System.String,System.Decimal,System.DateTimeOffset,System.Int32,System.String,System.String,System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Vuelos.DTOs.PasajeroVueloAdminResponse},System.Nullable{System.Decimal},System.Nullable{System.Decimal},System.Nullable{System.Decimal})">
+            <summary>Reserva de un vuelo consultada desde la administración.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.VueloAdminResponse">
+            <summary>Vuelo y versión de programación para la siguiente edición administrativa.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.VueloAdminResponse.#ctor(Vuelos_Backend.Models.Vuelos.DTOs.VueloResponse,System.String,System.Int32)">
+            <summary>Vuelo y versión de programación para la siguiente edición administrativa.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoVueloResponse">
+            <summary>Aeropuerto de la ruta consultada.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoVueloResponse.#ctor(System.Int32,System.String,System.String,System.String,System.String)">
+            <summary>Aeropuerto de la ruta consultada.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.AvionVueloResponse">
+            <summary>Datos del avión necesarios para consultar el vuelo.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.AvionVueloResponse.#ctor(System.Int32,System.String,System.Int32)">
+            <summary>Datos del avión necesarios para consultar el vuelo.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.VueloResponse">
+            <summary>Detalle público de un vuelo, con horarios y fechas en UTC.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.VueloResponse.#ctor(System.Int32,System.String,Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoVueloResponse,Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoVueloResponse,Vuelos_Backend.Models.Vuelos.DTOs.AvionVueloResponse,System.DateTimeOffset,System.DateTimeOffset,System.Nullable{System.DateTimeOffset},System.Nullable{System.DateTimeOffset},System.String,System.Boolean)">
+            <summary>Detalle público de un vuelo, con horarios y fechas en UTC.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.PaginaVuelosResponse">
+            <summary>Página de vuelos. Una búsqueda sin resultados devuelve vuelos vacío.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.PaginaVuelosResponse.#ctor(System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Vuelos.DTOs.VueloResponse},System.Int32,System.Int32,System.Int32,System.Int32)">
+            <summary>Página de vuelos. Una búsqueda sin resultados devuelve vuelos vacío.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Repositories.Catalogos.BusquedaCatalogosRepository">
+            <summary>Consultas de solo lectura que proyectan pocas columnas; nunca cargan DatosOrigenJson ni otros metadatos pesados.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Repositories.Catalogos.BusquedaCatalogosRepository.#ctor(Vuelos_Backend.Data.AppDbContext)">
+            <summary>Consultas de solo lectura que proyectan pocas columnas; nunca cargan DatosOrigenJson ni otros metadatos pesados.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Services.Catalogos.CreacionAviones">
+            <summary>Genera aviones y asientos para la carga CSV dentro de la transaccion administrativa.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Services.Pagos.ConciliacionPayPalWorker">
+            <summary>Solo consulta órdenes: nunca inicia capturas ni nuevos cobros.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Services.Pagos.ConciliacionPayPalWorker.#ctor(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory,Microsoft.Extensions.Options.IOptions{Vuelos_Backend.Models.Pagos.OpcionesPayPal},System.TimeProvider,Microsoft.Extensions.Logging.ILogger{Vuelos_Backend.Services.Pagos.ConciliacionPayPalWorker})">
+            <summary>Solo consulta órdenes: nunca inicia capturas ni nuevos cobros.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Services.Pagos.PayPalClient">
+            <summary>REST oficial Orders v2. Nunca recibe importes ni credenciales del navegador.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Services.Pagos.PayPalClient.#ctor(System.Net.Http.HttpClient,Microsoft.Extensions.Options.IOptions{Vuelos_Backend.Models.Pagos.OpcionesPayPal})">
+            <summary>REST oficial Orders v2. Nunca recibe importes ni credenciales del navegador.</summary>
+        </member>
+        <member name="T:Program">
+            <summary>
+            Auto-generated public partial Program class for top-level statement apps.
+            </summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Celdas_0">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the Celdas method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Celdas_0.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Celdas_0.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Celdas_0.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Celdas_0.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Celdas_0.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Celdas_0.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Celdas_0.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Celdas_0.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Identificador_1">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the Identificador method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Identificador_1.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Identificador_1.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Identificador_1.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Identificador_1.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Identificador_1.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Identificador_1.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Identificador_1.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Identificador_1.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.CedulaId_2">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the CedulaId method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.CedulaId_2.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.CedulaId_2.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.CedulaId_2.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.CedulaId_2.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.CedulaId_2.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.CedulaId_2.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.CedulaId_2.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.CedulaId_2.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Etiquetas_3">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the Etiquetas method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Etiquetas_3.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Etiquetas_3.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Etiquetas_3.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Etiquetas_3.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Etiquetas_3.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Etiquetas_3.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Etiquetas_3.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Etiquetas_3.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Resaltado_4">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the Resaltado method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Resaltado_4.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Resaltado_4.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Resaltado_4.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Resaltado_4.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Resaltado_4.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Resaltado_4.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Resaltado_4.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Resaltado_4.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Espacios_5">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the Espacios method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Espacios_5.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Espacios_5.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Espacios_5.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Espacios_5.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Espacios_5.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Espacios_5.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Espacios_5.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Espacios_5.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Utilities">
+            <summary>Helper methods used by generated <see cref="T:System.Text.RegularExpressions.Regex"/>-derived implementations.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.IndexOfNonAsciiOrAny_D4CAE793558EEFAC46091D7152028FDB49A092B127FD1A8598B56809B5A0AAFB(System.ReadOnlySpan{System.Char})">
+            <summary>Finds the next index of any character that matches a character in the set [Ii\s].</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.IsBoundaryWordChar(System.Char)">
+            <summary>Determines whether the specified index is a boundary word character.</summary>
+            <remarks>This is the same as \w plus U+200C ZERO WIDTH NON-JOINER and U+200D ZERO WIDTH JOINER.</remarks>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.IsPostWordCharBoundary(System.ReadOnlySpan{System.Char},System.Int32)">
+            <summary>Determines whether the specified index is a boundary.</summary>
+            <remarks>This variant is only employed when the previous character has already been validated as a word character.</remarks>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.StackPop(System.Int32[],System.Int32@,System.Int32@,System.Int32@)">
+            <summary>Pops 2 values from the backtracking stack.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.StackPush(System.Int32[]@,System.Int32@,System.Int32,System.Int32)">
+            <summary>Pushes 2 values onto the backtracking stack.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.StackPush(System.Int32[]@,System.Int32@,System.Int32,System.Int32,System.Int32)">
+            <summary>Pushes 3 values onto the backtracking stack.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.WordCategoriesMask">
+            <summary>Provides a mask of Unicode categories that combine to form [\w].</summary>
+        </member>
+        <member name="P:System.Text.RegularExpressions.Generated.Utilities.WordCharBitmap">
+            <summary>Gets a bitmap for whether each character 0 through 127 is in [\w]</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_ascii_FFC1FFFFFEFFFFFFFFFDFFFFFFFDFFFF">
+            <summary>Supports searching for characters in or not in "\0\u0001\u0002\u0003\u0004\u0005\u0006\a\b\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f!\"#$%&amp;'()*+,-./0123456789:;&lt;=&gt;?@ABCDEFGHJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghjklmnopqrstuvwxyz{|}~\u007f".</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_whitespace">
+            <summary>Supports searching for characters in or not in "\t\n\v\f\r \u0085             \u2028\u2029  　".</summary>
+        </member>
+    </members>
+</doc>

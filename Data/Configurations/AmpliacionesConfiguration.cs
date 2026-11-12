@@ -14,24 +14,24 @@ internal static class AmpliacionesConfiguration
         modelBuilder.Entity<Usuario>(builder =>
         {
             builder.Property(x => x.Eliminado)
-                .HasColumnName("eliminado").HasColumnType("bit")
-                .IsRequired().HasDefaultValue(false, "DF_usuarios_eliminado");
+                .HasColumnName("eliminado").HasColumnType("boolean")
+                .IsRequired().HasDefaultValue(false);
             builder.Property(x => x.FechaEliminacion)
-                .HasColumnName("fecha_eliminacion").HasColumnType("datetime2");
+                .HasColumnName("fecha_eliminacion").HasColumnType("timestamp with time zone");
             builder.HasQueryFilter(x => !x.Eliminado);
         });
 
         modelBuilder.Entity<Reserva>().Property(x => x.RowVersion)
-            .HasColumnName("row_version").HasColumnType("rowversion")
-            .IsRequired().IsRowVersion();
+            .HasColumnName("row_version").HasColumnType("bytea")
+            .IsRequired().IsConcurrencyToken().ValueGeneratedOnAddOrUpdate();
         modelBuilder.Entity<AsientoVuelo>().Property(x => x.RowVersion)
-            .HasColumnName("row_version").HasColumnType("rowversion")
-            .IsRequired().IsRowVersion();
+            .HasColumnName("row_version").HasColumnType("bytea")
+            .IsRequired().IsConcurrencyToken().ValueGeneratedOnAddOrUpdate();
 
         modelBuilder.Entity<DetalleReserva>()
             .HasIndex(x => x.AsientoVueloId)
             .HasDatabaseName("UX_detalle_reservas_asiento_activo")
-            .IsUnique().HasFilter("[estado] = 'activo'");
+            .IsUnique().HasFilter("\"estado\" = 'activo'");
     }
 }
 

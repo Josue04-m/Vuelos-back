@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Vuelos_Backend.Data;
 using Vuelos_Backend.Interface.Vuelos;
 using Vuelos_Backend.Models.Asientos;
 using Vuelos_Backend.Models.Reservas;
@@ -54,7 +55,8 @@ public sealed class VueloAdminService(IVueloAdminRepository repository, TimeProv
         {
             NumeroVuelo = request.NumeroVuelo.Trim().ToUpperInvariant(), AvionId = request.AvionId,
             AeropuertoOrigenId = request.AeropuertoOrigenId, AeropuertoDestinoId = request.AeropuertoDestinoId,
-            SalidaProgramada = request.SalidaProgramada.UtcDateTime, LlegadaProgramada = request.LlegadaProgramada.UtcDateTime,
+            SalidaProgramada = FechasPostgreSql.Normalizar(request.SalidaProgramada.UtcDateTime),
+            LlegadaProgramada = FechasPostgreSql.Normalizar(request.LlegadaProgramada.UtcDateTime),
             Estado = "programado", FechaCreacion = ahora
         };
         var asientos = fisicos.Select(a => new AsientoVuelo
@@ -99,8 +101,8 @@ public sealed class VueloAdminService(IVueloAdminRepository repository, TimeProv
         vuelo.NumeroVuelo = request.NumeroVuelo.Trim().ToUpperInvariant();
         vuelo.AeropuertoOrigenId = request.AeropuertoOrigenId;
         vuelo.AeropuertoDestinoId = request.AeropuertoDestinoId;
-        vuelo.SalidaProgramada = request.SalidaProgramada.UtcDateTime;
-        vuelo.LlegadaProgramada = request.LlegadaProgramada.UtcDateTime;
+        vuelo.SalidaProgramada = FechasPostgreSql.Normalizar(request.SalidaProgramada.UtcDateTime);
+        vuelo.LlegadaProgramada = FechasPostgreSql.Normalizar(request.LlegadaProgramada.UtcDateTime);
         await repository.GuardarAsync(cancellationToken);
         var resultado = await ObtenerAsync(vueloId, cancellationToken);
         await transaction.ConfirmarAsync(cancellationToken);
@@ -210,7 +212,7 @@ public sealed class VueloAdminService(IVueloAdminRepository repository, TimeProv
             // La implementación anterior registraba salida al embarcar. No reinterpretar ni sobrescribir esos datos.
             if (vuelo.SalidaReal.HasValue || vuelo.LlegadaReal.HasValue)
                 throw Conflicto("horarios_requieren_revision", "El vuelo tiene horas reales previas al despegue. Requiere revisión de sus datos históricos.");
-            var salida = request.SalidaReal?.UtcDateTime ?? ahora;
+            var salida = FechasPostgreSql.Normalizar(request.SalidaReal?.UtcDateTime ?? ahora);
             if (salida > ahora)
                 throw Invalido("La salida real no puede ser futura.");
             vuelo.SalidaReal = salida;
@@ -220,7 +222,7 @@ public sealed class VueloAdminService(IVueloAdminRepository repository, TimeProv
         {
             if (!vuelo.SalidaReal.HasValue || vuelo.SalidaReal > ahora || vuelo.LlegadaReal.HasValue)
                 throw Conflicto("horarios_requieren_revision", "Las horas reales existentes requieren revisión antes de finalizar el vuelo.");
-            var llegada = request.LlegadaReal?.UtcDateTime ?? ahora;
+            var llegada = FechasPostgreSql.Normalizar(request.LlegadaReal?.UtcDateTime ?? ahora);
             if (llegada > ahora)
                 throw Invalido("La llegada real no puede ser futura.");
             if (llegada <= vuelo.SalidaReal.Value)
@@ -399,7 +401,8 @@ public sealed class VueloAdminService(IVueloAdminRepository repository, TimeProv
     private void ValidarProgramacion(int origen, int destino, DateTimeOffset salida, DateTimeOffset llegada)
     {
         if (origen == destino) throw Invalido("Origen y destino deben ser diferentes.");
-        if (salida <= clock.GetUtcNow() || llegada <= salida)
+        if (FechasPostgreSql.Normalizar(salida.UtcDateTime) <= clock.GetUtcNow().UtcDateTime ||
+            FechasPostgreSql.Normalizar(llegada.UtcDateTime) <= FechasPostgreSql.Normalizar(salida.UtcDateTime))
             throw Invalido("La salida debe ser futura y la llegada posterior a la salida.");
     }
 

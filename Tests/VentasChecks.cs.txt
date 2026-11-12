@@ -56,11 +56,11 @@ internal static class VentasChecks
         var daily = await decimalService.ObtenerResumenAsync(new() { Desde = new(2026, 11, 1), Hasta = new(2026, 11, 1) }, ct);
         Check(daily.TotalVentas == 0.30m && daily.CantidadCompras == 2, "decimal exacto y día UTC completo");
         Check((await decimalService.ObtenerResumenAsync(new() { Hasta = DateOnly.MaxValue }, ct)).CantidadCompras == 3, "fecha máxima no desborda");
-        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer("Server=unused;Database=unused;Integrated Security=true").Options);
+        using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused").Options);
         var query = (IQueryable<AcumuladoVentas>)typeof(VentasRepository).GetMethod("ConsultaAcumulado", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(new VentasRepository(context), new object?[] { new DateTime(2026, 11, 1), new DateTime(2026, 11, 2), "Sandbox" })!;
+            .Invoke(new VentasRepository(context), new object?[] { new DateTime(2026, 11, 1,0,0,0,DateTimeKind.Utc), new DateTime(2026, 11, 2,0,0,0,DateTimeKind.Utc), "Sandbox" })!;
         var sql = query.ToQueryString();
-        Check(sql.Contains("SUM(") && sql.Contains("COUNT_BIG(") && !sql.Contains("JOIN"), "una consulta SQL suma y cuenta sin ocultar compras por filtros de usuario o reserva");
+        Check(sql.ToUpperInvariant().Contains("SUM(") && sql.ToUpperInvariant().Contains("COUNT(") && !sql.Contains("JOIN"), "una consulta SQL suma y cuenta sin ocultar compras por filtros de usuario o reserva");
         Check(!context.Database.HasPendingModelChanges(), "sin migración adicional");
         await HttpChecks(service);
         Console.WriteLine($"OK: {count} comprobaciones del acumulado de capturas PayPal; sin SQL Server.");
