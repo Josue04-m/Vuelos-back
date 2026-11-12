@@ -14,11 +14,19 @@ public sealed class OpcionesPayPal
     public void Validar()
     {
         if (!Habilitado || Entorno is not ("Sandbox") ||
-            new[] { ClientId, ClientSecret, MerchantId, WebhookId }.Any(string.IsNullOrWhiteSpace) ||
+            new[] { ClientId, ClientSecret, MerchantId }.Any(string.IsNullOrWhiteSpace) ||
             MerchantId.Length > 64 || !MerchantId.All(char.IsAsciiLetterOrDigit) ||
             !UrlValida(ReturnUrl) || !UrlValida(CancelUrl))
             throw new Reservas.ReservaOperacionException(Reservas.ErrorReserva.ServicioNoDisponible,
                 "paypal_sin_configurar", "Configure PayPal y sus credenciales en secretos de usuario o variables de entorno.");
+    }
+
+    public void ValidarWebhook()
+    {
+        Validar();
+        if (string.IsNullOrWhiteSpace(WebhookId))
+            throw new Reservas.ReservaOperacionException(Reservas.ErrorReserva.ServicioNoDisponible,
+                "paypal_webhook_sin_configurar", "Configure PayPal:WebhookId para verificar notificaciones de PayPal.");
     }
 
     private bool UrlValida(string valor) => Uri.TryCreate(valor, UriKind.Absolute, out var uri) &&

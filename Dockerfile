@@ -9,6 +9,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /publish ./
 COPY deploy/appsettings.json ./appsettings.json
+COPY deploy/prod-ca-2021.crt /app/certs/prod-ca-2021.crt
 ENV ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080
 USER $APP_UID

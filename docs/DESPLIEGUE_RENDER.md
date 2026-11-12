@@ -59,12 +59,13 @@ PayPal__Entorno=Sandbox
 PayPal__ClientId=VALOR_REAL
 PayPal__ClientSecret=VALOR_REAL
 PayPal__MerchantId=VALOR_REAL
-PayPal__WebhookId=ID_DEL_WEBHOOK_REAL
 PayPal__ReturnUrl=URL_HTTPS_DE_RETORNO
 PayPal__CancelUrl=URL_HTTPS_DE_CANCELACION
 ```
 
-No utilices los textos de ejemplo como credenciales. Actualiza en PayPal la URL del webhook para apuntar al endpoint existente de esta API usando su dominio público de Render; conserva su ruta y vuelve a configurar el ID si registras otro webhook. Las URL de retorno y cancelación son pantallas del cliente, no el endpoint de captura. Para probar solo el backend puedes usar la URL HTTPS de Swagger como destino y continuar la captura manualmente con el flujo documentado en PAYPAL.md.
+WebhookId es opcional para crear, capturar y consultar pagos. Puedes omitir `PayPal__WebhookId`. El cliente debe continuar llamando al endpoint de captura después de aprobar la orden: la redirección por sí sola no confirma el cobro. Las notificaciones webhook se rechazan mientras no exista un ID configurado.
+
+Si más adelante habilitas notificaciones, registra en PayPal el endpoint webhook existente con el dominio público de Render y agrega `PayPal__WebhookId` con su ID real. No utilices textos de ejemplo como credenciales. Las URL de retorno y cancelación son pantallas del cliente, no el endpoint de captura. Para probar solo el backend puedes usar la URL HTTPS de Swagger como destino y continuar la captura manualmente con el flujo documentado en PAYPAL.md.
 
 No se habilita Live en esta entrega. Si PayPal queda deshabilitado, las consultas normales pueden funcionar pero no podrás completar compras.
 
