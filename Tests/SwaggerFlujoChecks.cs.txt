@@ -42,6 +42,12 @@ internal static class SwaggerFlujoChecks
         Check(sale.GetProperty("tags")[0].GetString() == "11. Ventas acumuladas (admin)", "ventas visible en grupo propio");
         Check(sale.GetProperty("responses").TryGetProperty("200", out _) && sale.GetProperty("responses").TryGetProperty("403", out _), "respuestas del resumen documentadas");
         Check(root.GetProperty("security")[0].TryGetProperty("Bearer", out _), "autorización Bearer global");
+        foreach(var path in new[]{"/api/vuelos","/api/vuelos/{id}","/api/vuelos/{id}/asientos","/api/aeropuertos"})
+        {
+            var action=paths.GetProperty(path).GetProperty("get");
+            Check(action.GetProperty("security").GetArrayLength()==0,"Swagger consulta pública "+path);
+            Check(!action.GetProperty("responses").TryGetProperty("401",out _)&&!action.GetProperty("responses").TryGetProperty("403",out _),"Swagger sin requisitos de sesión heredados "+path);
+        }
         Check(paths.GetProperty("/api/autenticacion/login").GetProperty("post").GetProperty("security").GetArrayLength() == 0, "login público documentado");
         Check(!sale.TryGetProperty("security", out var security) || security.GetArrayLength() > 0, "ventas no aparece como anónima");
         var schemas = root.GetProperty("components").GetProperty("schemas");

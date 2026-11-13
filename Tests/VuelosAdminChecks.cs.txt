@@ -345,6 +345,27 @@ internal static class Checks
         var url = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         using var http = new HttpClient { BaseAddress = new Uri(url) };
 
+        // Misma política global que producción: solo las acciones de exploración son públicas.
+        foreach (var path in new[] { "/api/vuelos", "/api/vuelos/1", "/api/vuelos/1/asientos" })
+        {
+            using var response = await http.GetAsync(path);
+            Check(response.StatusCode == HttpStatusCode.OK, "exploración sin token " + path);
+            Check(response.Headers.Location is null, "sin redirección al login " + path);
+        }
+        foreach (var path in new[] { "/api/vuelos/999", "/api/vuelos/999/asientos" })
+            Check((await http.GetAsync(path)).StatusCode == HttpStatusCode.NotFound, "404 público " + path);
+        foreach (var path in new[] { "/api/vuelos?pagina=0", "/api/vuelos?tamanoPagina=101", "/api/vuelos/0", "/api/vuelos/0/asientos" })
+            Check((await http.GetAsync(path)).StatusCode == HttpStatusCode.BadRequest, "validación pública " + path);
+        foreach (var path in new[] { "/api/reservas", "/api/reservas/1", "/api/reservas/1/paypal", "/api/pasajeros/consulta-cedula/1234567890" })
+            Check((await http.GetAsync(path)).StatusCode == HttpStatusCode.Unauthorized, "consulta privada sin token " + path);
+        foreach (var path in new[] { "/api/reservas", "/api/reservas/1/cancelacion", "/api/reservas/1/paypal/orden", "/api/reservas/1/paypal/captura" })
+            Check((await http.PostAsJsonAsync(path, new { })).StatusCode == HttpStatusCode.Unauthorized, "escritura privada sin token " + path);
+        var publicTypes = new[] { typeof(VueloResponse), typeof(AeropuertoVueloResponse), typeof(AvionVueloResponse),
+            typeof(AsientosVueloResponse), typeof(Vuelos_Backend.Models.Asientos.DTOs.AsientoVueloResponse),
+            typeof(Vuelos_Backend.Models.Asientos.DTOs.CategoriaAsientoResponse) };
+        foreach (var type in publicTypes)
+            Check(!type.GetProperties().Any(p => new[] { "UsuarioId", "Pasajeros", "Reservas", "Cedula", "Email", "Token" }.Contains(p.Name)), "DTO sin datos personales " + type.Name);
+
         var endpointsAdmin = new[]
         {
             (HttpMethod.Get, ""),
@@ -471,9 +492,12 @@ public class ReservaGuardProxy : System.Reflection.DispatchProxy
 
 internal sealed class Consultas : IVueloService
 {
+    private static readonly VueloResponse VueloPublico = new(1, "TEST1", new(1,"UIO","Mariscal Sucre","Quito","EC"),
+        new(2,"BOG","El Dorado","Bogotá","CO"), new(1,"Prueba",2),
+        DateTimeOffset.UtcNow.AddDays(1),DateTimeOffset.UtcNow.AddDays(1).AddHours(2),null,null,"programado",true);
     public Task<PaginaVuelosResponse> BuscarAsync(BusquedaVuelosRequest r, CancellationToken ct) => Task.FromResult(new PaginaVuelosResponse([], 1, 20, 0, 0));
-    public Task<VueloResponse?> ObtenerAsync(int id, CancellationToken ct) => Task.FromResult<VueloResponse?>(null);
-    public Task<AsientosVueloResponse?> ListarAsientosAsync(int id, CancellationToken ct) => Task.FromResult<AsientosVueloResponse?>(null);
+    public Task<VueloResponse?> ObtenerAsync(int id, CancellationToken ct) => Task.FromResult<VueloResponse?>(id==1?VueloPublico:null);
+    public Task<AsientosVueloResponse?> ListarAsientosAsync(int id, CancellationToken ct) => Task.FromResult<AsientosVueloResponse?>(id==1?new(1,"TEST1","USD",true,[]):null);
 }
 
 internal sealed class MemoryRepo : IVueloAdminRepository

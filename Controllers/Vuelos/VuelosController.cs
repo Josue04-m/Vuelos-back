@@ -10,11 +10,10 @@ namespace Vuelos_Backend.Controllers.Vuelos;
 [ApiController]
 [Authorize(Policy = PoliticasAcceso.ClienteOAdministrador)]
 [Route("api/vuelos")]
-[ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
-[ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
 public sealed class VuelosController(IVueloService vuelos) : ControllerBase
 {
     [HttpGet]
+    [AllowAnonymous]
     [ProducesResponseType<PaginaVuelosResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<PaginaVuelosResponse>> Buscar(
@@ -22,6 +21,7 @@ public sealed class VuelosController(IVueloService vuelos) : ControllerBase
         Ok(await vuelos.BuscarAsync(request, cancellationToken));
 
     [HttpGet("{id:int}")]
+    [AllowAnonymous]
     [ProducesResponseType<VueloResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -35,6 +35,7 @@ public sealed class VuelosController(IVueloService vuelos) : ControllerBase
     }
 
     [HttpGet("{id:int}/asientos")]
+    [AllowAnonymous]
     [ProducesResponseType<AsientosVueloResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
