@@ -787,3 +787,4 @@ C:\Users\Josue\AppData\Local\Temp\vb_out\Vuelos_Backend.runtimeconfig.json
 C:\Users\Josue\AppData\Local\Temp\vb_out\Vuelos_Backend.dll
 C:\Users\Josue\AppData\Local\Temp\vb_out\Vuelos_Backend.pdb
 C:\Users\Josue\AppData\Local\Temp\vb_out\Vuelos_Backend.xml
+C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\obj\verificacion-supabase\Models\Catalogos\paises.es.json

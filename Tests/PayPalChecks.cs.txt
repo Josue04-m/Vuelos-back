@@ -191,7 +191,7 @@ internal static class PayPalChecks
     {
         var config=PayPalFixture.Config(); var handler=new HttpPayPalPrueba();
         config.WebhookId="";
-        using var http=new HttpClient(handler); var client=new PayPalClient(http,Options.Create(config));
+        using var http=new HttpClient(handler); var client=new PayPalClient(http,Options.Create(config),Microsoft.Extensions.Logging.Abstractions.NullLogger<PayPalClient>.Instance);
         var p=new PagoPayPal {PagoId=Guid.NewGuid(),Monto=80.25m,MerchantId=config.MerchantId,OrdenId="ORDER123"}; handler.Pago=p;
         var order=await client.CrearAsync(p,Ct); PagoPayPalService.ValidarOrden(p,order,true);
         await client.CrearAsync(p,Ct); await client.CapturarAsync(p,Ct);

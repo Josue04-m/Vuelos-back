@@ -1,5 +1,7 @@
 # Pacific Nexus Airways — Contrato de API para frontend
 
+**Búsqueda pública de aeropuertos:** `GET /api/aeropuertos?buscar=Ecuador&pagina=1&tamanoPagina=20`, sin token. Busca por nombre de país en español (también parcial, sin tildes/mayúsculas) o ISO exacto como EC. Responde `elementos`, `pagina`, `tamanoPagina`, `total`, `totalPaginas`; cada elemento contiene `aeropuertoId`, `codigoIata`, `nombre`, `ciudad`, `pais`. Flutter conserva el IATA para consultar vuelos y usa `pais` para las banderas. Contrato y validaciones: [REQUERIMIENTO_BUSQUEDA_PUBLICA_AEROPUERTOS.md](docs/REQUERIMIENTO_BUSQUEDA_PUBLICA_AEROPUERTOS.md). Pendiente de despliegue y prueba con datos reales; no requiere migración.
+
 **Importes con IVA (laboratorio):** [IVA_RESERVAS.md](IVA_RESERVAS.md) describe subtotal, porcentajeIva y montoIva nullable; montoTotal y el monto PayPal son el total final. TotalEsperado de reservas nuevas debe incluir IVA. XML/SOAP/correo todavía no se implementan.
 
 **Requerimiento para adaptar widgets Flutter:** [FLUTTER_IMPORTACIONES_CATALOGOS.md](FLUTTER_IMPORTACIONES_CATALOGOS.md) reúne pantallas, formularios multipart, catálogos de solo lectura, metadatos nuevos, estados y criterios de aceptación.

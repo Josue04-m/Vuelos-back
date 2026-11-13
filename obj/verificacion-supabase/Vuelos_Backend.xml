@@ -67,6 +67,10 @@
             <summary>Actualiza el precio base o la disponibilidad (bloqueo/desbloqueo) de un asiento del vuelo.</summary>
             <remarks>No permite cambiar la disponibilidad de asientos con reservas activas. Exige RowVersion en Base64.</remarks>
         </member>
+        <member name="M:Vuelos_Backend.Controllers.Catalogos.AeropuertosController.Buscar(Vuelos_Backend.Models.Catalogos.DTOs.BuscarAeropuertosPublicosRequest,System.Threading.CancellationToken)">
+            <summary>Busca aeropuertos activos por país en español o código ISO, sin iniciar sesión.</summary>
+            <remarks>Ejemplos: Ecuador, EC, Perú, Peru, Ecua. Solo devuelve aeropuertos con IATA válido.</remarks>
+        </member>
         <member name="M:Vuelos_Backend.Controllers.Catalogos.CatalogosBusquedaController.BuscarAeropuertos(Vuelos_Backend.Models.Catalogos.DTOs.BusquedaCatalogoRequest,System.Threading.CancellationToken)">
             <summary>Busca aeropuertos activos para un selector. Q busca por IATA, ICAO, nombre, ciudad o país; varias palabras deben coincidir todas.</summary>
             <remarks>Devuelve como máximo 50 resultados con datos mínimos. No descargue el catálogo completo: filtre en el servidor.</remarks>
@@ -77,21 +81,8 @@
         <member name="M:Vuelos_Backend.Controllers.Catalogos.CatalogosBusquedaController.BuscarAviones(Vuelos_Backend.Models.Catalogos.DTOs.BusquedaCatalogoRequest,System.Threading.CancellationToken)">
             <summary>Busca aviones activos para un selector. Q busca por modelo, matrícula, IATA o ICAO.</summary>
         </member>
-        <member name="M:Vuelos_Backend.Controllers.Pagos.PayPalController.Crear(System.Int32,Vuelos_Backend.Models.Pagos.CrearOrdenPayPalRequest,System.Threading.CancellationToken)">
-            <summary>Crea una orden PayPal por el total USD de la reserva propia. Abra UrlAprobacion para autorizarla.</summary>
-        </member>
-        <member name="M:Vuelos_Backend.Controllers.Pagos.PayPalController.Capturar(System.Int32,System.Threading.CancellationToken)">
-            <summary>Captura la orden aprobada de la reserva propia. El retorno del navegador no acredita el pago.</summary>
-            <remarks>Es idempotente. Ante estado pendiente o revision consulte el pago; no cree una segunda compra.</remarks>
-        </member>
         <member name="M:Vuelos_Backend.Controllers.Pagos.PayPalController.Obtener(System.Int32,System.Threading.CancellationToken)">
             <summary>Consulta el pago propio y concilia capturas inciertas con PayPal.</summary>
-        </member>
-        <member name="M:Vuelos_Backend.Controllers.Pagos.PayPalController.Conciliar(System.Guid,System.Threading.CancellationToken)">
-            <summary>Concilia un pago con PayPal sin iniciar un cobro. Solo administrador.</summary>
-        </member>
-        <member name="M:Vuelos_Backend.Controllers.Pagos.PayPalController.Webhook(System.Text.Json.JsonElement,System.Threading.CancellationToken)">
-            <summary>Recibe notificaciones PayPal verificadas mediante su API oficial. No requiere token del usuario.</summary>
         </member>
         <member name="M:Vuelos_Backend.Controllers.Reservas.ReservasController.Crear(Vuelos_Backend.Models.Reservas.DTOs.CrearReservaRequest,System.Threading.CancellationToken)">
             <summary>Crea una reserva temporal pendiente de pago. Retiene los asientos hasta FechaExpiracion.</summary>
@@ -259,6 +250,21 @@
         </member>
         <member name="M:Vuelos_Backend.Models.Autenticacion.DTOs.LoginResponse.#ctor(System.String,System.String,System.DateTimeOffset,Vuelos_Backend.Models.Usuarios.DTOs.UsuarioResponse)">
             <summary>Token de la nueva sesión y su expiración UTC; solo se devuelve en login.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.BuscarAeropuertosPublicosRequest">
+            <summary>Búsqueda pública por nombre de país o código ISO de dos letras.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.AeropuertoPublicoResponse">
+            <summary>Datos públicos mínimos de un aeropuerto seleccionable.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.AeropuertoPublicoResponse.#ctor(System.Int32,System.String,System.String,System.String,System.String)">
+            <summary>Datos públicos mínimos de un aeropuerto seleccionable.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.PaginaAeropuertosPublicosResponse">
+            <summary>Página de aeropuertos; los totales incluyen todas las coincidencias.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.PaginaAeropuertosPublicosResponse.#ctor(System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Catalogos.DTOs.AeropuertoPublicoResponse},System.Int32,System.Int32,System.Int32,System.Int32)">
+            <summary>Página de aeropuertos; los totales incluyen todas las coincidencias.</summary>
         </member>
         <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.BusquedaCatalogoRequest">
             <summary>Búsqueda ligera para selectores. Q admite varias palabras; todas deben coincidir. Sin Q devuelve los primeros resultados.</summary>
@@ -587,6 +593,9 @@
         <member name="T:Vuelos_Backend.Services.Catalogos.CreacionAviones">
             <summary>Genera aviones y asientos para la carga CSV dentro de la transaccion administrativa.</summary>
         </member>
+        <member name="T:Vuelos_Backend.Services.Catalogos.PaisesBusqueda">
+            <summary>Nombres españoles CLDR/ICU incorporados como recurso; no consulta servicios externos.</summary>
+        </member>
         <member name="T:Vuelos_Backend.Services.Pagos.ConciliacionPayPalWorker">
             <summary>Solo consulta órdenes: nunca inicia capturas ni nuevos cobros.</summary>
         </member>
@@ -596,7 +605,7 @@
         <member name="T:Vuelos_Backend.Services.Pagos.PayPalClient">
             <summary>REST oficial Orders v2. Nunca recibe importes ni credenciales del navegador.</summary>
         </member>
-        <member name="M:Vuelos_Backend.Services.Pagos.PayPalClient.#ctor(System.Net.Http.HttpClient,Microsoft.Extensions.Options.IOptions{Vuelos_Backend.Models.Pagos.OpcionesPayPal})">
+        <member name="M:Vuelos_Backend.Services.Pagos.PayPalClient.#ctor(System.Net.Http.HttpClient,Microsoft.Extensions.Options.IOptions{Vuelos_Backend.Models.Pagos.OpcionesPayPal},Microsoft.Extensions.Logging.ILogger{Vuelos_Backend.Services.Pagos.PayPalClient})">
             <summary>REST oficial Orders v2. Nunca recibe importes ni credenciales del navegador.</summary>
         </member>
         <member name="T:Program">

@@ -2,6 +2,8 @@
 
 ## 1. Propósito y alcance
 
+Requerimiento adicional: consulta pública paginada de aeropuertos por país en `GET /api/aeropuertos`, sin token. Contrato, límites y responsabilidades de Flutter: `docs/REQUERIMIENTO_BUSQUEDA_PUBLICA_AEROPUERTOS.md`. La administración permanece protegida; no cambia los permisos de consulta de vuelos ni de reservas/pagos.
+
 Diseñar e implementar una API de reservas de vuelos basada en arquitectura orientada a servicios (SOA). Será consumida por una aplicación móvil desarrollada en Flutter y por los clientes administrativos que se desarrollen posteriormente. Este documento abarca todo el backend, incluidos los servicios y endpoints de administración.
 
 La API permitirá registrar clientes, autenticar usuarios, consultar vuelos, seleccionar asientos, confirmar reservas y consultar, modificar o cancelar las reservas propias. También permitirá administrar aeropuertos, aviones, categorías y asientos, vuelos, tarifas y estados operativos mediante endpoints protegidos para el rol admin.
