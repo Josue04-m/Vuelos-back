@@ -141,9 +141,9 @@ Conservar la configuración real en secretos de usuario o variables de entorno y
 | Usuarios | POST /api/usuarios/registro | Público | Registrar nombres, apellidos, correo y contraseña. |
 | Autenticación | POST /api/autenticacion/login | Público | Validar credenciales y emitir token con expiración. |
 | Autenticación | POST /api/autenticacion/logout | Autenticado | Revocar el token de la sesión actual. |
-| Vuelos | GET /api/vuelos | Autenticado | Buscar por origen, destino y fecha o rango de fechas. |
-| Vuelos | GET /api/vuelos/{id} | Autenticado | Consultar horarios, estado y datos del vuelo. |
-| Vuelos | GET /api/vuelos/{id}/asientos | Autenticado | Consultar asientos, precios y disponibilidad. |
+| Vuelos | GET /api/vuelos | Público | Buscar por origen, destino y fecha o rango de fechas. |
+| Vuelos | GET /api/vuelos/{id} | Público | Consultar horarios, estado y datos del vuelo. |
+| Vuelos | GET /api/vuelos/{id}/asientos | Público | Consultar asientos, precios y disponibilidad. |
 | Reservas | POST /api/reservas | Autenticado | Retener temporalmente vuelo, pasajeros y asientos hasta su compra o vencimiento. |
 | Reservas | GET /api/reservas | Autenticado | Listar reservas propias con filtros y paginación. |
 | Reservas | GET /api/reservas/{id} | Propietario | Consultar detalle propio. |

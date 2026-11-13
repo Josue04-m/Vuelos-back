@@ -1,0 +1,23 @@
+@baseUrl = http://localhost:5236
+@vueloId = 1
+
+### Explorar aeropuertos sin Authorization
+GET {{baseUrl}}/api/aeropuertos?buscar=Ecuador
+
+### Buscar vuelos sin Authorization
+GET {{baseUrl}}/api/vuelos?pagina=1&tamanoPagina=20
+
+### Detalle público (usar un ID existente)
+GET {{baseUrl}}/api/vuelos/{{vueloId}}
+
+### Clases, precios y disponibilidad públicos
+GET {{baseUrl}}/api/vuelos/{{vueloId}}/asientos
+
+### Validación pública: 400
+GET {{baseUrl}}/api/vuelos?pagina=0
+
+### Recursos privados: 401 sin Authorization
+GET {{baseUrl}}/api/reservas
+
+### Pago propio protegido: 401 sin Authorization
+GET {{baseUrl}}/api/reservas/1/paypal

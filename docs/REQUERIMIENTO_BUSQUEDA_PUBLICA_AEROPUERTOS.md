@@ -1,12 +1,57 @@
 # Requerimiento: búsqueda pública de aeropuertos para Flutter
 
-Estado: implementado en el código del backend. Pendiente de desplegar y validar con los datos reales de Supabase.
+Estado: implementado en el backend; pendiente de desplegar esta actualización y validar con Flutter y Supabase reales.
 
 ## Objetivo y experiencia del cliente
 
 En Comprar, el cliente pulsa **Desde** o **Hacia** y se abre un modal. Escribe el nombre de un país, por ejemplo **Ecuador**, y recibe los aeropuertos coincidentes. Selecciona **Quito · Mariscal Sucre** y Flutter conserva internamente su `codigoIata` para buscar vuelos.
 
 El cliente no necesita conocer ni escribir códigos IATA. La búsqueda inicial es por país; no se requiere búsqueda por ciudad o nombre de aeropuerto en esta entrega.
+
+## Acceso público para explorar vuelos sin iniciar sesión
+
+Flutter ya permite entrar a Inicio y Comprar sin cuenta. El cliente debe poder buscar vuelos, abrir su detalle y consultar clases, precios y disponibilidad antes de decidir reservar. La aplicación solicita iniciar sesión o registrarse al continuar con una reserva. También permite acceder voluntariamente desde Mi cuenta o Mis viajes.
+
+Para que este flujo funcione, el backend debe permitir acceso anónimo a estas consultas:
+
+| Método | Ruta | Uso público |
+|---|---|---|
+| GET | `/api/vuelos` | Buscar vuelos por aeropuerto y fechas. |
+| GET | `/api/vuelos/{id}` | Consultar detalle de un vuelo. |
+| GET | `/api/vuelos/{id}/asientos` | Consultar clases, precios y disponibilidad de asientos. |
+| GET | `/api/aeropuertos` | Buscar aeropuertos por país en el modal. Ruta propuesta en este documento; confirmar la definitiva. |
+
+### Ajuste de autorización en ASP.NET Core
+
+En estas acciones GET concretas, retirar el requisito de autenticación o declarar `[AllowAnonymous]`. Si el controlador tiene `[Authorize]` a nivel de clase, quitar un atributo de la acción no elimina ese requisito heredado: aplicar `[AllowAnonymous]` a las acciones públicas.
+
+Ejemplo ilustrativo de una acción existente:
+
+```csharp
+[HttpGet]
+[AllowAnonymous]
+public async Task<IActionResult> GetVuelos(/* parámetros existentes */)
+{
+    // Conservar la implementación actual de consulta y sus validaciones.
+}
+```
+
+Si se utiliza una política global de autorización o middleware propio de validación de tokens, comprobar también que permita estas consultas sin token. No cambiar las rutas ni los contratos existentes de vuelos para habilitar el acceso anónimo.
+
+**No quitar `[Authorize]` de toda la API ni de un controlador que también tenga operaciones privadas.** La excepción debe limitarse a los métodos GET públicos de la tabla. No agregar `[AllowAnonymous]` a nivel de clase si eso expone otras acciones.
+
+### Operaciones que conservan autenticación
+
+- Registro y login conservan su acceso público actual.
+- Crear, listar o consultar reservas propias, cambiarlas o cancelarlas requiere sesión.
+- Consultar datos personales de pasajeros requiere sesión.
+- Crear órdenes de PayPal, capturar pagos y consultar pagos o comprobantes propios requiere sesión y comprobación de titularidad.
+- Todas las operaciones `/api/admin/*` conservan autenticación y rol administrativo.
+- Cualquier operación de escritura sobre vuelos, asientos o catálogos conserva sus permisos actuales.
+
+El detalle público de vuelos y asientos debe devolver únicamente información para explorar y reservar. No debe exponer titulares, documentos, pasajeros, reservas ajenas ni información administrativa. Mantener separadas las consultas públicas y los manifiestos administrativos.
+
+La ausencia de un token en las consultas públicas no debe producir `401` ni redirigir al login. La autenticación y autorización de las operaciones privadas deben seguir siendo comprobadas por el backend; ocultar botones en Flutter no las sustituye.
 
 ## 1. Endpoint público propuesto
 
@@ -131,6 +176,13 @@ La clase de asiento y la cantidad de viajeros se comprueban actualmente en Flutt
 ## 9. Criterios de aceptación del backend
 
 - [ ] La consulta funciona sin sesión.
+- [ ] Sin encabezado `Authorization`, `GET /api/vuelos` permite buscar vuelos.
+- [ ] Sin token, el detalle y la disponibilidad de un vuelo existente se pueden consultar.
+- [ ] Sin token, un vuelo inexistente conserva su respuesta `404`; la solicitud no se rechaza por exigir sesión.
+- [ ] Las respuestas públicas no incluyen datos personales ni información privada de reservas.
+- [ ] Crear una reserva sin sesión sigue devolviendo `401`.
+- [ ] Consultar reservas y pagos propios sigue requiriendo sesión y comprobación de titularidad.
+- [ ] Un cliente sin permisos administrativos no puede acceder a `/api/admin/*`.
 - [ ] `Ecuador` y `EC` devuelven las mismas coincidencias.
 - [ ] `Perú` y `Peru` producen las mismas coincidencias.
 - [ ] Una búsqueda parcial por país devuelve coincidencias.
@@ -148,25 +200,10 @@ La clase de asiento y la cantidad de viajeros se comprueban actualmente en Flutt
 
 Compartir la ruta definitiva, los parámetros aceptados, ejemplos reales de éxito y error, y la documentación actualizada en `docs`. Si el backend ya dispone de una consulta pública equivalente, confirmar su contrato para reutilizarla en lugar de crear otra.
 
-La ruta definitiva es `GET /api/aeropuertos`, con el contrato descrito arriba. Flutter puede conectar el modal cuando se despliegue esta versión. Las consultas administrativas y los permisos de vuelos, reservas y pagos conservan su comportamiento.
+Las cuatro rutas públicas de este documento están implementadas. El acceso anónimo se declara en cada acción GET; se conservan las políticas globales de autenticación y los permisos administrativos. La integración visual y navegación de Flutter corresponden al frontend.
 
-## 11. Notas de implementación y verificación
+## 11. Verificación y despliegue
 
-- No requiere migraciones ni nuevos paquetes. No se modificó la base de datos.
-- Los nombres españoles de países/regiones están incorporados en `Models/Catalogos/paises.es.json`, generados con `Intl.DisplayNames('es', {type: 'region'})` y CLDR/ICU 78.3. Son datos estáticos: no se llama a una API externa ni se necesita Node en Render. Los códigos ISO de dos letras se buscan de forma exacta; el texto de tres o más caracteres se compara parcialmente sin mayúsculas ni tildes.
-- El repositorio filtra en PostgreSQL: activo, IATA de tres letras mayúsculas y país coincidente. Cuenta antes de paginar, ordena por ciudad/nombre/ID y proyecta únicamente los cinco campos públicos. No exige vuelos disponibles ni carga los metadatos JSON del CSV.
-- Los ejemplos de este documento son ilustrativos; IDs y cantidades dependen de los registros de cada base. No se obtuvieron ejemplos de la base de producción durante esta implementación.
-- Pruebas en `Tests/AeropuertosPublicosChecks.cs.txt`: resolución de países, SQL generado y HTTP local con repositorio simulado. Se ejecutan con la suite `Completa` de `Tests/VerificarModeloPostgreSql.ps1`. La comprobación con Supabase real y Flutter queda pendiente.
-- Swagger presenta la consulta en **14. Aeropuertos (consulta pública)** sin exigir Bearer. Ejemplos manuales en `AeropuertosPublicos.http`.
+Pruebas locales en `Tests/VuelosAdminChecks.cs.txt`, `Tests/SwaggerFlujoChecks.cs.txt` y `Tests/AeropuertosPublicosChecks.cs.txt`: acceso anónimo, validaciones, recursos inexistentes, metadatos Swagger, DTOs públicos y conservación de permisos privados. Usan HTTP local con servicios/repositorios simulados; no prueban la base de producción. Las pruebas existentes de reservas y PayPal comprueban la titularidad.
 
-Ejemplo de error para `GET /api/aeropuertos?buscar=E` (el texto, type y traceId pueden variar según ASP.NET):
-
-```json
-{
-  "title": "One or more validation errors occurred.",
-  "status": 400,
-  "errors": {
-    "Buscar": ["La búsqueda debe tener entre 2 y 100 caracteres."]
-  }
-}
-```
+No se requieren migraciones, dependencias nuevas ni cambios de variables de Render. Después de desplegar, probar las cuatro consultas sin pulsar Authorize en Swagger y verificar el flujo visitante → login → reserva en Flutter. Ejemplos manuales en `ExploracionPublica.http`.

@@ -31,7 +31,7 @@ Las rutas de este documento incluyen `/api`; no añadir ese prefijo dos veces. `
 
 ## 2. Autenticación y permisos
 
-Registro y login son públicos. El webhook PayPal no usa sesión, pero exige verificar la firma del proveedor. Los demás endpoints requieren sesión con rol `cliente` o `admin`; `/api/admin/*` exige `admin`.
+Registro, login, `GET /api/aeropuertos`, `GET /api/vuelos`, `GET /api/vuelos/{id}` y `GET /api/vuelos/{id}/asientos` son públicos. Se puede explorar sin enviar Authorization. El webhook PayPal no usa sesión, pero exige verificar la firma del proveedor. Los demás endpoints requieren sesión con rol `cliente` o `admin`; `/api/admin/*` exige `admin`.
 
 ```http
 Authorization: Bearer TOKEN_RECIBIDO_DEL_LOGIN
@@ -100,7 +100,7 @@ Ante `409` por versión desactualizada: consultar nuevamente, actualizar la pant
 
 ### 4.1 Buscar vuelos y disponibilidad
 
-1. Iniciar sesión.
+1. Explorar sin iniciar sesión. Solicitar login o registro al continuar con una reserva; después conservar la selección en Flutter y consultar otra vez la disponibilidad/versiones antes de reservar.
 2. `GET /api/vuelos?origen=GYE&destino=UIO&fecha=2026-11-15`.
 3. Consultar detalle con `GET /api/vuelos/{id}`.
 4. Consultar `GET /api/vuelos/{id}/asientos` para dibujar el mapa y obtener los IDs y versiones actuales.
