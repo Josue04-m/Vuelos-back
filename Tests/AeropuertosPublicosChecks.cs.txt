@@ -1,0 +1,95 @@
+using System;
+using System.Linq;
+using System.Reflection;
+using System.Net;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Vuelos_Backend.Controllers.Catalogos;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Interface.Catalogos;
+using Vuelos_Backend.Models.Catalogos.DTOs;
+using Vuelos_Backend.Repositories.Catalogos;
+using Vuelos_Backend.Services.Catalogos;
+
+internal static class AeropuertosPublicosChecks
+{
+    private static int count;
+    private static void Check(bool ok,string message){if(!ok)throw new Exception(message);count++;}
+    public static async Task RunAsync()
+    {
+        foreach(var term in new[]{"Ecuador","ecuador"," EC "})
+            Check(PaisesBusqueda.Resolver(term).SequenceEqual(new[]{"EC"}),"país Ecuador/ISO/parcial: "+term);
+        Check(PaisesBusqueda.Resolver("Ecua").Contains("EC")&&PaisesBusqueda.Resolver("Ecua").Contains("GQ"),"parcial incluye Ecuador y Guinea Ecuatorial");
+        foreach(var term in new[]{"Perú","Peru","PE","pErÚ"})
+            Check(PaisesBusqueda.Resolver(term).SequenceEqual(new[]{"PE"}),"país Perú sin tildes: "+term);
+        Check(PaisesBusqueda.Resolver("Estados Unidos").Contains("US"),"nombre de país español");
+        Check(PaisesBusqueda.Resolver("Japón").Contains("JP"),"catálogo internacional");
+        Check(PaisesBusqueda.Resolver("PaisInexistente").Length==0,"país sin coincidencias");
+        Check(PaisesBusqueda.Resolver("%").Length==0,"no interpreta comodines");
+        using(var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused").Options))
+        {
+            var repo=new AeropuertosPublicosRepository(db);
+            var query=(IQueryable<Vuelos_Backend.Models.Aeropuertos.Aeropuerto>)typeof(AeropuertosPublicosRepository)
+                .GetMethod("Consulta",BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(repo,new object[]{"Ecuador"})!;
+            var sql=query.ToQueryString();
+            Check(sql.Contains("activo")&&sql.Contains(" ~ ")&&sql.Contains("pais")&&sql.Contains("EC"),"filtro activo/IATA/país traducido a SQL PostgreSQL");
+            Check(!sql.Contains("JOIN",StringComparison.OrdinalIgnoreCase),"no requiere vuelos disponibles");
+            var pagina=(IQueryable<AeropuertoPublicoResponse>)typeof(AeropuertosPublicosRepository)
+                .GetMethod("Pagina",BindingFlags.Static|BindingFlags.NonPublic)!.Invoke(null,new object[]{query,20,20})!;
+            var pageSql=pagina.ToQueryString();
+            Check(pageSql.Contains("ORDER BY")&&pageSql.Contains("ciudad")&&pageSql.Contains("nombre")&&pageSql.Contains("aeropuerto_id")&&pageSql.Contains("LIMIT")&&pageSql.Contains("OFFSET"),"orden estable y paginación en SQL");
+            Check(!pageSql.Contains("datos_origen_json")&&!pageSql.Contains("row_version")&&!pageSql.Contains("latitud"),"SQL proyecta solo datos públicos ligeros");
+        }
+        var builder=WebApplication.CreateBuilder();builder.Logging.ClearProviders();builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddControllers().AddApplicationPart(typeof(AeropuertosController).Assembly);
+        builder.Services.AddSingleton<IAeropuertosPublicosRepository,PublicosFake>();
+        builder.Services.AddAuthorization(o=>o.FallbackPolicy=new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+        await using var app=builder.Build();app.UseAuthorization();app.MapControllers();await app.StartAsync();
+        using var http=new HttpClient{BaseAddress=new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
+        using(var response=await http.GetAsync("/api/aeropuertos?buscar=%20Ecuador%20"))
+        {
+            Check(response.StatusCode==HttpStatusCode.OK,"endpoint público incluso con política fallback autenticada");
+            using var json=JsonDocument.Parse(await response.Content.ReadAsStringAsync());var root=json.RootElement;
+            Check(root.GetProperty("total").GetInt32()==1&&root.GetProperty("pagina").GetInt32()==1&&root.GetProperty("tamanoPagina").GetInt32()==20,"contrato paginado y valores por defecto");
+            var item=root.GetProperty("elementos")[0];
+            Check(item.EnumerateObject().Select(x=>x.Name).Order().SequenceEqual(new[]{"aeropuertoId","ciudad","codigoIata","nombre","pais"}.Order()),"solo cinco campos públicos");
+            Check(item.GetProperty("pais").GetString()=="EC","país conserva ISO");
+        }
+        foreach(var query in new[]{"","?buscar=","?buscar=%20%20","?buscar=A","?buscar="+new string('a',101),"?buscar=EC&pagina=0","?buscar=EC&tamanoPagina=101","?buscar=EC&tamanoPagina=0","?buscar=EC&pagina=abc"})
+        {
+            using var invalid=await http.GetAsync("/api/aeropuertos"+query);
+            Check(invalid.StatusCode==HttpStatusCode.BadRequest,"validación HTTP: "+query);
+            using var json=JsonDocument.Parse(await invalid.Content.ReadAsStringAsync());
+            Check(json.RootElement.GetProperty("errors").ValueKind==JsonValueKind.Object,"ValidationProblemDetails habitual");
+        }
+        foreach(var query in new[]{"?buscar=PaisInexistente","?buscar=EC&pagina=2147483647"})
+        {
+            using var response=await http.GetAsync("/api/aeropuertos"+query);
+            Check(response.StatusCode==HttpStatusCode.OK,"lista vacía es 200");
+            using var json=JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Check(json.RootElement.GetProperty("elementos").GetArrayLength()==0,"sin resultados/página fuera de rango");
+        }
+        var admin=typeof(Vuelos_Backend.Controllers.Administracion.AeropuertosAdminController);
+        Check(admin.GetCustomAttributes<AuthorizeAttribute>().Any()&&!admin.GetCustomAttributes<AllowAnonymousAttribute>().Any(),"administración mantiene autorización");
+        Console.WriteLine($"OK: {count} comprobaciones de aeropuertos públicos; HTTP y SQL generado, sin conexión a base.");
+    }
+    private sealed class PublicosFake : IAeropuertosPublicosRepository
+    {
+        public Task<PaginaAeropuertosPublicosResponse> BuscarAsync(BuscarAeropuertosPublicosRequest r,CancellationToken ct)
+        {
+            var total=PaisesBusqueda.Resolver(r.Buscar).Contains("EC")?1:0;
+            AeropuertoPublicoResponse[] rows=total>0&&r.Pagina==1?[new(1,"UIO","Mariscal Sucre","Quito","EC")]:[];
+            return Task.FromResult(new PaginaAeropuertosPublicosResponse(rows,r.Pagina,r.TamanoPagina,total,total));
+        }
+    }
+}

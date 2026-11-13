@@ -365,6 +365,7 @@
 -r:"C:\Program Files\dotnet\packs\Microsoft.AspNetCore.App.Ref\10.0.12\ref\net10.0\Microsoft.Extensions.Features.dll"
 "C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\Tests\CompletaPostgreSql.cs.txt"
 "C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\Tests\SoportePostgreSql.cs.txt"
+"C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\Tests\AeropuertosPublicosChecks.cs.txt"
 "C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\Tests\CatalogosChecks.cs.txt"
 "C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\Tests\CorsChecks.cs.txt"
 "C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\Tests\DescuentosPasajerosChecks.cs.txt"

@@ -67,6 +67,7 @@ public static class DocumentacionApi
         "Reservas" => "10. Reservas",
         "PayPal" => "12. Pagos PayPal",
         "CatalogosBusqueda" => "13. Búsqueda de catálogos (selectores)",
+        "Aeropuertos" => "14. Aeropuertos (consulta pública)",
         "VentasAdmin" => "11. Ventas acumuladas (admin)",
         var controller => controller ?? "API"
     };

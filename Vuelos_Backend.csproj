@@ -10,6 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Models\Catalogos\paises.es.json" WithCulture="false" LogicalName="Vuelos_Backend.Models.Catalogos.paises.es.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Histórico SQL Server conservado en su ruta original; PostgreSQL usará su propia subcarpeta. -->
     <Compile Remove="Data\Migrations\*.cs" />
     <Compile Remove="Data\Migrations\SqlServer\**\*.cs" />

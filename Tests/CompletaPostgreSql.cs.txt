@@ -8,6 +8,7 @@ internal static class CompletaPostgreSql
         try
         {
             await Checks.Main();
+            await AeropuertosPublicosChecks.RunAsync();
             ModeloPostgreSql.Main();
             MigracionPostgreSql.Main();
             await PersistenciaPostgreSql.RunAsync(incluirRegresiones: false);

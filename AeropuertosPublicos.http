@@ -1,0 +1,19 @@
+@baseUrl = http://localhost:5236
+
+### Sin token: búsqueda por país, con paginación
+GET {{baseUrl}}/api/aeropuertos?buscar=Ecuador&pagina=1&tamanoPagina=20
+
+### Equivalencia ISO
+GET {{baseUrl}}/api/aeropuertos?buscar=EC
+
+### Ignora tildes
+GET {{baseUrl}}/api/aeropuertos?buscar=Peru
+
+### Coincidencia parcial
+GET {{baseUrl}}/api/aeropuertos?buscar=Ecua
+
+### Sin coincidencias: 200, lista vacía
+GET {{baseUrl}}/api/aeropuertos?buscar=PaisInexistente
+
+### Búsqueda obligatoria: 400
+GET {{baseUrl}}/api/aeropuertos

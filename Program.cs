@@ -68,6 +68,7 @@ builder.Services.AddScoped<IVueloAdminService, VueloAdminService>();
 builder.Services.AddScoped<ICatalogosAdminRepository, CatalogosAdminRepository>();
 builder.Services.AddScoped<ICatalogosAdminService, CatalogosAdminService>();
 builder.Services.AddScoped<IBusquedaCatalogosRepository, BusquedaCatalogosRepository>();
+builder.Services.AddScoped<IAeropuertosPublicosRepository, AeropuertosPublicosRepository>();
 builder.Services.AddScoped<IImportacionAvionesService, ImportacionAvionesService>();
 builder.Services.AddScoped<IImportacionAeropuertosService, ImportacionAeropuertosService>();
 builder.Services.AddScoped<IVentasRepository, VentasRepository>();
