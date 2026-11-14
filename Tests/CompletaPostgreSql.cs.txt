@@ -9,6 +9,7 @@ internal static class CompletaPostgreSql
         {
             await Checks.Main();
             await AeropuertosPublicosChecks.RunAsync();
+            await MapaVuelosChecks.RunAsync();
             ModeloPostgreSql.Main();
             MigracionPostgreSql.Main();
             await PersistenciaPostgreSql.RunAsync(incluirRegresiones: false);

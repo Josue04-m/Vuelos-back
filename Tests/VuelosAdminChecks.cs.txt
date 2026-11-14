@@ -332,6 +332,7 @@ internal static class Checks
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddScoped<IVueloAdminService, VueloAdminService>();
         builder.Services.AddSingleton<IVueloService, Consultas>();
+        builder.Services.AddSingleton<IConsultaVuelosAdminService, Consultas>();
         builder.Services.AddControllers().AddApplicationPart(typeof(VuelosAdminController).Assembly);
         builder.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions, RoleAuth>("test", _ => { });
         builder.Services.AddAuthorization(PoliticasAcceso.Configurar);
@@ -377,7 +378,8 @@ internal static class Checks
             (HttpMethod.Get, "/1/historial"),
             (HttpMethod.Get, "/1/asientos"),
             (HttpMethod.Patch, "/1/asientos/1"),
-            (HttpMethod.Get, "/1/reservas")
+            (HttpMethod.Get, "/1/reservas"),
+            (HttpMethod.Get, "/1/recorrido")
         };
 
         foreach (var role in new[] { "", "cliente" })
@@ -490,12 +492,14 @@ public class ReservaGuardProxy : System.Reflection.DispatchProxy
     }
 }
 
-internal sealed class Consultas : IVueloService
+internal sealed class Consultas : IVueloService, IConsultaVuelosAdminService
 {
     private static readonly VueloResponse VueloPublico = new(1, "TEST1", new(1,"UIO","Mariscal Sucre","Quito","EC"),
         new(2,"BOG","El Dorado","Bogotá","CO"), new(1,"Prueba",2),
         DateTimeOffset.UtcNow.AddDays(1),DateTimeOffset.UtcNow.AddDays(1).AddHours(2),null,null,"programado",true);
     public Task<PaginaVuelosResponse> BuscarAsync(BusquedaVuelosRequest r, CancellationToken ct) => Task.FromResult(new PaginaVuelosResponse([], 1, 20, 0, 0));
+    public Task<PaginaVuelosResponse> BuscarAsync(BusquedaVuelosAdminRequest r, CancellationToken ct) => Task.FromResult(new PaginaVuelosResponse([], r.Pagina, r.TamanoPagina, 0, 0));
+    public Task<RecorridoVueloAdminResponse?> ObtenerRecorridoAsync(int id, CancellationToken ct) => Task.FromResult<RecorridoVueloAdminResponse?>(null);
     public Task<VueloResponse?> ObtenerAsync(int id, CancellationToken ct) => Task.FromResult<VueloResponse?>(id==1?VueloPublico:null);
     public Task<AsientosVueloResponse?> ListarAsientosAsync(int id, CancellationToken ct) => Task.FromResult<AsientosVueloResponse?>(id==1?new(1,"TEST1","USD",true,[]):null);
 }
