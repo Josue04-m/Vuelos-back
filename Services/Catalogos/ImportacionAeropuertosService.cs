@@ -97,7 +97,9 @@ public sealed class ImportacionAeropuertosService(ICatalogosAdminRepository repo
                 if (!string.IsNullOrEmpty(request.PaisIso) && !string.Equals(pais, request.PaisIso, StringComparison.OrdinalIgnoreCase)) { datos.Omitir("fuera_del_pais"); continue; }
                 var iata = Campo("iata_code").ToUpperInvariant();
                 if (iata is "" or "\\N") { datos.Omitir("sin_iata"); continue; }
-                var nombre = Campo("name"); var ciudad = Campo("municipality");
+                var nombre = Campo("name");
+                var ciudadTexto = Campo("municipality");
+                string? ciudad = ciudadTexto is "" or "\\N" ? null : ciudadTexto;
                 var errores = new List<(string Campo, string Mensaje)>();
                 string? Opcional(string campo, int? maximo = null)
                 {
@@ -137,7 +139,8 @@ public sealed class ImportacionAeropuertosService(ICatalogosAdminRepository repo
                 if (iata.Length != 3 || iata.Any(c => c is < 'A' or > 'Z')) errores.Add(("iata_code", "IATA debe contener exactamente tres letras A-Z."));
                 if (pais.Length != 2 || pais.Any(c => c is < 'A' or > 'Z')) errores.Add(("iso_country", "Indique un país ISO de dos letras."));
                 if (string.IsNullOrWhiteSpace(nombre) || nombre == "\\N" || nombre.Length > 150 || nombre.Any(char.IsControl)) errores.Add(("name", "Nombre obligatorio, hasta 150 caracteres, sin controles."));
-                if (string.IsNullOrWhiteSpace(ciudad) || ciudad == "\\N" || ciudad.Length > 100 || ciudad.Any(char.IsControl)) errores.Add(("municipality", "Ciudad obligatoria, hasta 100 caracteres, sin controles. No se infiere del nombre."));
+                if (ciudad is not null && (ciudad.Length > 100 || ciudad.Any(char.IsControl)))
+                    errores.Add(("municipality", "Ciudad opcional; si se indica, admite hasta 100 caracteres y no permite controles."));
                 if (errores.Count > 0)
                 {
                     if (request.OmitirIncompletos) datos.Omitir("datos_incompletos_o_invalidos");

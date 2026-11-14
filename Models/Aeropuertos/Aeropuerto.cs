@@ -8,7 +8,7 @@ public class Aeropuerto : Vuelos_Backend.Models.Common.ICatalogoAdministrable
     public int AeropuertoId { get; set; }
     public string CodigoIata { get; set; } = null!;
     public string Nombre { get; set; } = null!;
-    public string Ciudad { get; set; } = null!;
+    public string? Ciudad { get; set; }
     public string Pais { get; set; } = null!;
     public long? IdOrigen { get; set; }
     public string? Identificador { get; set; }

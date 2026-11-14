@@ -1,0 +1,150 @@
+id,iata,ident,pais,nombre,ciudad,fuente,idFuente,nombreFuente,icaoFuente,distanciaKm,criterio
+2098,DJO,DIDL,CI,Daloa Airport,Daloa,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,255,Daloa Airport,DIDL,0,IATA+ICAO+pais+coordenadas
+2100,MJC,DIMN,CI,Man Airport,Man,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,257,Man Airport,DIMN,0,IATA+ICAO+pais+coordenadas
+2101,SPY,DISP,CI,San Pedro Airport,San Pedro,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,258,San Pedro Airport,DISP,0,IATA+ICAO+pais+coordenadas
+2915,ZWA,FMND,MG,Andapa Airport,Andapa,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,925,Andapa Airport,FMND,0,IATA+ICAO+pais+coordenadas
+2916,AMB,FMNE,MG,Ambilobe Airport,Ambilobe,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,926,Ambilobe Airport,FMNE,0,IATA+ICAO+pais+coordenadas
+2926,IVA,FMNZ,MG,Ampampamena Airport,Ampampamena,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,936,Ampampamena Airport,FMNZ,0,IATA+ICAO+pais+coordenadas
+3230,HUQ,HLON,LY,Hon Airport,Hon,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1160,Hon Airport,HLON,0,IATA+ICAO+pais+coordenadas
+4973,TBF,NGTE,KI,Tabiteuea North Airport,Tabiteuea North,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1966,Tabiteuea North Airport,NGTE,0,IATA+ICAO+pais+coordenadas
+4980,RUR,NTAR,PF,Rurutu Airport,Rurutu,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1971,Rurutu Airport,NTAR,0,IATA+ICAO+pais+coordenadas
+4981,TUB,NTAT,PF,Tubuai Airport,Tubuai,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1972,Tubuai Airport,NTAT,0,IATA+ICAO+pais+coordenadas
+4982,RVV,NTAV,PF,Raivavae Airport,Raivavae,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,7456,Raivavae Airport,NTAV,0,IATA+ICAO+pais+coordenadas
+4987,FAV,NTGF,PF,Fakarava Airport,Fakarava,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1977,Fakarava Airport,NTGF,0,IATA+ICAO+pais+coordenadas
+4988,XMH,NTGI,PF,Manihi Airport,Manihi,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1978,Manihi Airport,NTGI,0,IATA+ICAO+pais+coordenadas
+4989,GMR,NTGJ,PF,Totegegie Airport,Totegegie,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1979,Totegegie Airport,NTGJ,0,IATA+ICAO+pais+coordenadas
+4992,PKP,NTGP,PF,Puka Puka Airport,Puka Puka,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1982,Puka Puka Airport,NTGP,0.042,IATA+ICAO+pais+coordenadas
+4993,TKP,NTGT,PF,Takapoto Airport,Takapoto,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1983,Takapoto Airport,NTGT,0,IATA+ICAO+pais+coordenadas
+4994,AXR,NTGU,PF,Arutua Airport,Arutua,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1984,Arutua Airport,NTGU,0,IATA+ICAO+pais+coordenadas
+4995,MVT,NTGV,PF,Mataiva Airport,Mataiva,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1985,Mataiva Airport,NTGV,0,IATA+ICAO+pais+coordenadas
+5000,TKX,NTKR,PF,Takaroa Airport,Takaroa,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1986,Takaroa Airport,NTKR,0,IATA+ICAO+pais+coordenadas
+5004,RGI,NTTG,PF,Rangiroa Airport,Rangiroa,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,1990,Rangiroa Airport,NTTG,0,IATA+ICAO+pais+coordenadas
+5008,MAU,NTTP,PF,Maupiti Airport,Maupiti,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,1994,Maupiti Airport,NTTP,0,IATA+ICAO+pais+coordenadas
+29877,WHO,NZFJ,NZ,Franz Josef Aerodrome,Franz Josef Aerodrome,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,11671,Franz Josef Aerodrome,\N,0.011,IATA+nombre+pais+coordenadas
+5032,HKK,NZHK,NZ,Hokitika Airfield,Hokitika,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2014,Hokitika Airfield,NZHK,0,IATA+ICAO+pais+coordenadas
+30001,KBZ,NZKI,NZ,Kaikoura Airport,Kaikoura,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,4102,Kaikoura Airport,NZKI,0,IATA+ICAO+pais+coordenadas
+5039,MON,NZMC,NZ,Mount Cook Airport,Mount Cook,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2020,Mount Cook Airport,NZMC,0,IATA+ICAO+pais+coordenadas
+30138,MFN,NZMF,NZ,Milford Sound Airport,Milford Sound,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,4031,Milford Sound Airport,NZMF,0,IATA+ICAO+pais+coordenadas
+30166,MZP,NZMK,NZ,Motueka Airport,Motueka,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8983,Motueka Airport,NZMK,0,IATA+ICAO+pais+coordenadas
+5040,TEU,NZMO,NZ,Manapouri Airport,Manapouri,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2021,Manapouri Airport,NZMO,0,IATA+ICAO+pais+coordenadas
+5046,OHA,NZOH,NZ,RNZAF Base Ohakea,Ohakea,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2026,RNZAF Base Ohakea,NZOH,0,IATA+ICAO+pais+coordenadas
+5047,OAM,NZOU,NZ,Oamaru Airport,Oamaru,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2027,Oamaru Airport,NZOU,0,IATA+ICAO+pais+coordenadas
+5050,PPQ,NZPP,NZ,Paraparaumu Airport,Paraparaumu,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2029,Paraparaumu Airport,NZPP,0,IATA+ICAO+pais+coordenadas
+30464,KTF,NZTK,NZ,Takaka Airport,Takaka,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,7611,Takaka Airport,NZTK,0,IATA+ICAO+pais+coordenadas
+5056,TIU,NZTU,NZ,Timaru Airport,Timaru,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2035,Timaru Airport,NZTU,0,IATA+ICAO+pais+coordenadas
+5151,KHD,OICK,IR,Khoram Abad Airport,Khorram Abad,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,5927,Khoram Abad Airport,OICK,0,IATA+ICAO+pais+coordenadas
+5152,SDG,OICS,IR,Sanandaj Airport,Sanandaj,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2117,Sanandaj Airport,OICS,0,IATA+ICAO+pais+coordenadas
+5231,DHF,OMAM,AE,Al Dhafra Air Base,Abu Dhabi,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2184,Al Dhafra Air Base,OMAM,0,IATA+ICAO+pais+coordenadas
+6263,CXA,SVCD,VE,Caicara del Orinoco Airport,Caicara De Orinoco,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2827,Caicara del Orinoco Airport,SVCD,0,IATA+ICAO+pais+coordenadas
+6286,GUI,SVGI,VE,Guiria Airport,Guiria,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2840,Guiria Airport,SVGI,0,IATA+ICAO+pais+coordenadas
+6294,LFR,SVLF,VE,La Fria Airport,La Fria,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2846,La Fria Airport,SVLF,0,IATA+ICAO+pais+coordenadas
+6332,TMO,SVTM,VE,Tumeremo Airport,Tumeremo,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2867,Tumeremo Airport,SVTM,0,IATA+ICAO+pais+coordenadas
+6337,VDP,SVVP,VE,Valle de La Pascua Airport,Valle De La Pascua,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,2871,Valle de La Pascua Airport,SVVP,0,IATA+ICAO+pais+coordenadas
+43693,EZV,USHB,RU,Berezovo Airport,Berezovo,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6424,Berezovo Airport,USHB,0,IATA+ICAO+pais+coordenadas
+43692,EYK,USHQ,RU,Beloyarskiy Airport,Beloyarsky,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8428,Beloyarskiy Airport,USHY,0,IATA+nombre+pais+coordenadas
+26443,GUX,VAGN,IN,Guna Airport,Guna,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,3006,Guna Airport,VAGN,0,IATA+ICAO+pais+coordenadas
+26488,IXV,VEAN,IN,Along Airport,Along,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,3037,Along Airport,VEAN,0,IATA+ICAO+pais+coordenadas
+26498,DBD,VEDB,IN,Dhanbad Airport,Dhanbad,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,3045,Dhanbad Airport,VEDB,0,IATA+ICAO+pais+coordenadas
+26521,TEZ,VETZ,IN,Tezpur Airport,Tezpur,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,6175,Tezpur Airport,VETZ,0,IATA+ICAO+pais+coordenadas
+26547,BUP,VIBT,IN,Bhatinda Air Force Station,Bhatinda,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,3086,Bhatinda Air Force Station,VIBT,0,IATA+ICAO+pais+coordenadas
+26564,JSA,VIJR,IN,Jaisalmer Airport,Jaisalmer,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,3099,Jaisalmer Airport,VIJR,0,IATA+ICAO+pais+coordenadas
+26568,LUH,VILD,IN,Ludhiana Airport,Ludhiaha,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,3103,Ludhiana Airport,VILD,0,IATA+ICAO+pais+coordenadas
+26579,TNI,VIST,IN,Satna Airport,Satna,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,3113,Satna Airport,VIST,0.202,IATA+ICAO+pais+coordenadas
+26586,ZVK,VLSK,LA,Savannakhet Airport,Savannakhet,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,3118,Savannakhet Airport,VLSK,0,IATA+ICAO+pais+coordenadas
+26587,NEU,VLSN,LA,Sam Neua Airport,Sam Neua,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,3119,Sam Neua Airport,VLSN,0,IATA+ICAO+pais+coordenadas
+26649,LPT,VTCL,TH,Lampang Airport,Lampang,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,3163,Lampang Airport,VTCL,0,IATA+ICAO+pais+coordenadas
+26650,NNT,VTCN,TH,Nan Airport,Nan,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,4131,Nan Airport,VTCN,0,IATA+ICAO+pais+coordenadas
+26651,PRH,VTCP,TH,Phrae Airport,Phrae,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,3164,Phrae Airport,VTCP,0,IATA+ICAO+pais+coordenadas
+26654,PHY,VTPB,TH,Phetchabun Airport,Phetchabun,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,4299,Phetchabun Airport,VTPB,0,IATA+ICAO+pais+coordenadas
+26658,MAQ,VTPM,TH,Mae Sot Airport,Tak,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6186,Mae Sot Airport,VTPM,0,IATA+ICAO+pais+coordenadas
+26660,THS,VTPO,TH,Sukhothai Airport,Sukhothai,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,3939,Sukhothai Airport,VTPO,0,IATA+ICAO+pais+coordenadas
+26662,TKT,VTPT,TH,Tak Airport,Tak,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,9233,Tak Airport,VTPT,0,IATA+ICAO+pais+coordenadas
+26666,NAW,VTSC,TH,Narathiwat Airport,Narathiwat,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,3173,Narathiwat Airport,VTSC,0,IATA+ICAO+pais+coordenadas
+26670,SGZ,VTSH,TH,Songkhla Airport,Songkhla,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,3175,Songkhla Airport,VTSH,0,IATA+ICAO+pais+coordenadas
+26671,PAN,VTSK,TH,Pattani Airport,Pattani,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,3176,Pattani Airport,VTSK,0,IATA+ICAO+pais+coordenadas
+26679,SNO,VTUI,TH,Sakon Nakhon Airport,Sakon Nakhon,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,3184,Sakon Nakhon Airport,VTUI,0,IATA+ICAO+pais+coordenadas
+26682,LOE,VTUL,TH,Loei Airport,Loei,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,3186,Loei Airport,VTUL,0,IATA+ICAO+pais+coordenadas
+27328,AMT,YAMT,AU,Amata Airport,Amata,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,12958,Amata Airport,YAMT,1.289,IATA+ICAO+pais+coordenadas
+26892,GYL,YARG,AU,Argyle Airport,Argyle,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6236,Argyle Airport,YARG,0.041,IATA+ICAO+pais+coordenadas
+26906,BXG,YBDG,AU,Bendigo Airport,Bendigo,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6915,Bendigo Airport,YBDG,0,IATA+ICAO+pais+coordenadas
+26907,BVI,YBDV,AU,Birdsville Airport,Birdsville,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6240,Birdsville Airport,YBDV,0,IATA+ICAO+pais+coordenadas
+298811,OCM,YBGD,AU,Boolgeeda,Brockman,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,13227,Boolgeeda,YBGD,0.584,IATA+ICAO+pais+coordenadas
+26912,BRK,YBKE,AU,Bourke Airport,Bourke,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6244,Bourke Airport,YBKE,0,IATA+ICAO+pais+coordenadas
+26913,BUC,YBKT,AU,Burketown Airport,Burketown,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6245,Burketown Airport,YBKT,0,IATA+ICAO+pais+coordenadas
+26922,OKY,YBOK,AU,Oakey Army Aviation Centre,Oakey,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6247,Oakey Airport,YBOK,0.292,IATA+ICAO+pais+coordenadas
+26923,BQL,YBOU,AU,Boulia Airport,Boulia,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6248,Boulia Airport,YBOU,0,IATA+ICAO+pais+coordenadas
+27409,BMP,YBPI,AU,Brampton Island Airport,Brampton Island,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,9068,Brampton Island Airport,YBPI,1.042,IATA+ICAO+pais+coordenadas
+26926,BOX,YBRL,AU,Borroloola Airport,Borroloola,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,10618,Borroloola Airport,YBRL,0,IATA+ICAO+pais+coordenadas
+26930,BYP,YBRY,AU,Barimunya Airport,Barimunya,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,13600,Barimunya Airport,YBRY,0.011,IATA+ICAO+pais+coordenadas
+26935,BLT,YBTR,AU,Blackwater Airport,Blackwater,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,6250,Blackwater Airport,YBTR,0,IATA+ICAO+pais+coordenadas
+26937,BUY,YBUN,AU,Bunbury Airport,Bunbury,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,10116,Bunbury Airport,YBUN,0.028,IATA+ICAO+pais+coordenadas
+26940,BWB,YBWX,AU,Barrow Island Airport,Barrow Island,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,7566,Barrow Island Airport,YBWX,0.013,IATA+ICAO+pais+coordenadas
+26943,CAZ,YCBA,AU,Cobar Airport,Cobar,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6252,Cobar Airport,YCBA,0,IATA+ICAO+pais+coordenadas
+26944,COJ,YCBB,AU,Coonabarabran Airport,Coonabarabran,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,9193,Coonabarabran Airport,YCBB,0,IATA+ICAO+pais+coordenadas
+27444,CNC,YCCT,AU,Coconut Island Airport,Coconut Island,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6254,Coconut Island Airport,YCCT,0.015,IATA+ICAO+pais+coordenadas
+26950,CED,YCDU,AU,Ceduna Airport,Ceduna,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6256,Ceduna Airport,YCDU,0,IATA+ICAO+pais+coordenadas
+27461,CKI,YCKI,AU,Croker Island Airport,Croker Island,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,13598,Croker Island Airport,YCKI,0,IATA+ICAO+pais+coordenadas
+26955,CTN,YCKN,AU,Cooktown Airport,Cooktown,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6257,Cooktown Airport,YCKN,0.144,IATA+ICAO+pais+coordenadas
+26956,CMQ,YCMT,AU,Clermont Airport,Clermont,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,9901,Clermont Airport,YCMT,0,IATA+ICAO+pais+coordenadas
+26957,CMA,YCMU,AU,Cunnamulla Airport,Cunnamulla,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6258,Cunnamulla Airport,YCMU,0,IATA+ICAO+pais+coordenadas
+26958,CES,YCNK,AU,Cessnock Airport,Cessnock,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6806,Cessnock Airport,YCNK,0,IATA+ICAO+pais+coordenadas
+26959,CNB,YCNM,AU,Coonamble Airport,Coonamble,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6259,Coonamble Airport,YCNM,0.314,IATA+ICAO+pais+coordenadas
+27480,CDA,YCOO,AU,Cooinda Airport,Cooinda,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,7912,Cooinda Airport,YCOO,0,IATA+ICAO+pais+coordenadas
+26968,CWT,YCWR,AU,Cowra Airport,Chatsworth,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,9533,Cowra Airport,YCWR,0.261,IATA+ICAO+pais+coordenadas
+26973,DMD,YDMG,AU,Doomadgee Airport,Doomadgee,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6262,Doomadgee Airport,YDMG,0,IATA+ICAO+pais+coordenadas
+26985,FOS,YFRT,AU,Forrest Airport,Forrest,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8353,Forrest Airport,YFRT,0.266,IATA+ICAO+pais+coordenadas
+26986,FIZ,YFTZ,AU,Fitzroy Crossing Airport,Fitzroy Crossing,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,7576,Fitzroy Crossing Airport,YFTZ,0.206,IATA+ICAO+pais+coordenadas
+26990,GOO,YGDI,AU,Goondiwindi Airport,Goondiwindi,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,12618,Goondiwindi Airport,YGDI,0,IATA+ICAO+pais+coordenadas
+26995,GUL,YGLB,AU,Goulburn Airport,Goulburn,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6805,Goulburn Airport,YGLB,0,IATA+ICAO+pais+coordenadas
+27005,HCQ,YHLC,AU,Halls Creek Airport,Halls Creek,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,7575,Halls Creek Airport,YHLC,0,IATA+ICAO+pais+coordenadas
+27007,HLT,YHML,AU,Hamilton Airport,Hamilton,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,7574,Hamilton Airport,YHML,0,IATA+ICAO+pais+coordenadas
+27011,HSM,YHSM,AU,Horsham Airport,Horsham,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,11273,Horsham Airport,YHSM,0,IATA+ICAO+pais+coordenadas
+27013,IFL,YIFL,AU,Innisfail Airport,Innisfail,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8823,Innisfail Airport,YIFL,0,IATA+ICAO+pais+coordenadas
+27018,JAB,YJAB,AU,Jabiru Airport,Jabiru,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,7913,Jabiru Airport,YJAB,0.179,IATA+ICAO+pais+coordenadas
+27020,JCK,YJLC,AU,Julia Creek Airport,Julia Creek,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6276,Julia Creek Airport,YJLC,0,IATA+ICAO+pais+coordenadas
+27023,KNS,YKII,AU,King Island Airport,King Island,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6278,King Island Airport,YKII,0,IATA+ICAO+pais+coordenadas
+27024,KFG,YKKG,AU,Kalkgurung Airport,Kalkgurung,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6279,Kalkgurung Airport,YKKG,0,IATA+ICAO+pais+coordenadas
+27690,KRB,YKMB,AU,Karumba Airport,Karumba,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6280,Karumba Airport,YKMB,0,IATA+ICAO+pais+coordenadas
+27028,KGC,YKSC,AU,Kingscote Airport,Kingscote,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,4051,Kingscote Airport,YKSC,0,IATA+ICAO+pais+coordenadas
+27030,LGH,YLEC,AU,Leigh Creek Airport,Leigh Creek,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8349,Leigh Creek Airport,YLEC,0,IATA+ICAO+pais+coordenadas
+27033,LEL,YLEV,AU,Lake Evella Airport,Lake Evella,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6284,Lake Evella Airport,YLEV,0,IATA+ICAO+pais+coordenadas
+27036,BBL,YLLE,AU,Ballera Airport,Ballera,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,7129,Ballera Airport,YLLE,0,IATA+ICAO+pais+coordenadas
+27037,LHG,YLRD,AU,Lightning Ridge Airport,Lightning Ridge,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,6288,Lightning Ridge Airport,YLRD,0.789,IATA+ICAO+pais+coordenadas
+27039,LER,YLST,AU,Leinster Airport,Leinster,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,6290,Leinster Airport,YLST,0,IATA+ICAO+pais+coordenadas
+27042,LZR,YLZI,AU,Lizard Island Airport,Lizard Island,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,7573,Lizard Island Airport,YLZI,0,IATA+ICAO+pais+coordenadas
+27756,XMC,YMCO,AU,Mallacoota Airport,Mallacoota,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8380,Mallacoota Airport,YMCO,0,IATA+ICAO+pais+coordenadas
+27050,MKR,YMEK,AU,Meekatharra Airport,Meekatharra,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,6293,Meekatharra Airport,YMEK,0,IATA+ICAO+pais+coordenadas
+27068,MTL,YMND,AU,Maitland Airport,Maitland,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6809,Maitland Airport,YMND,0,IATA+ICAO+pais+coordenadas
+27069,WME,YMNE,AU,Mount Keith Airport,Mount Keith,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6419,Mount Keith Airport,YMNE,0.104,IATA+ICAO+pais+coordenadas
+27071,MMG,YMOG,AU,Mount Magnet Airport,Mount Magnet,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6299,Mount Magnet Airport,YMOG,0,IATA+ICAO+pais+coordenadas
+27805,MWB,YMRW,AU,Morawa Airport,Morawa,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat,7567,Morawa Airport,\N,1.632,IATA+nombre+pais+coordenadas
+27077,ONG,YMTI,AU,Mornington Island Airport,Mornington Island,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6304,Mornington Island Airport,YMTI,0,IATA+ICAO+pais+coordenadas
+38516,NKB,YNKA,AU,Noonkanbah Airport,Noonkanbah,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,13671,Noonkanbah Airport,YNKA,0,IATA+ICAO+pais+coordenadas
+27085,NAC,YNRC,AU,Naracoorte Airport,Naracoorte,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,13307,Naracoorte Airport,YNRC,0,IATA+ICAO+pais+coordenadas
+27087,RVT,YNRV,AU,Ravensthorpe Airport,Ravensthorpe,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,7577,Ravensthorpe Airport,YNRV,0,IATA+ICAO+pais+coordenadas
+27866,ONS,YOLW,AU,Onslow Airport,Onslow,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8847,Onslow Airport,YOLW,0.285,IATA+ICAO+pais+coordenadas
+27097,PUG,YPAG,AU,Port Augusta Airport,Argyle,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6312,Port Augusta Airport,YPAG,0,IATA+ICAO+pais+coordenadas
+27098,PMK,YPAM,AU,Palm Island Airport,Palm Island,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6313,Palm Island Airport,YPAM,0,IATA+ICAO+pais+coordenadas
+27116,PTJ,YPOD,AU,Portland Airport,Portland,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6321,Portland Airport,YPOD,0,IATA+ICAO+pais+coordenadas
+27120,KTR,YPTN,AU,Tindal Airport,Katherine,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6897,Tindal Airport,YPTN,0,IATA+ICAO+pais+coordenadas
+27124,ULP,YQLP,AU,Quilpie Airport,Quilpie,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6322,Quilpie Airport,YQLP,0.344,IATA+ICAO+pais+coordenadas
+27125,RMK,YREN,AU,Renmark Airport,Renmark,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8348,Renmark Airport,YREN,0,IATA+ICAO+pais+coordenadas
+27126,RCM,YRMD,AU,Richmond Airport,Richmond,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,9904,Richmond Airport,YRMD,0,IATA+ICAO+pais+coordenadas
+27127,RAM,YRNG,AU,Ramingining Airport,Ramingining,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6323,Ramingining Airport,YRNG,0,IATA+ICAO+pais+coordenadas
+27129,RTS,YRTI,AU,Rottnest Island Airport,Rottnest Island,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8352,Rottnest Island Airport,YRTI,0,IATA+ICAO+pais+coordenadas
+27134,NSO,YSCO,AU,Scone Airport,Scone,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6807,Scone Airport,YSCO,0.09,IATA+ICAO+pais+coordenadas
+27136,SGO,YSGE,AU,St George Airport,St George,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6325,St George Airport,YSGE,0,IATA+ICAO+pais+coordenadas
+27138,SHT,YSHT,AU,Shepparton Airport,Shepparton,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8994,Shepparton Airport,YSHT,0.151,IATA+ICAO+pais+coordenadas
+27964,SRN,YSRN,AU,Strahan Airport,Strahan,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6328,Strahan Airport,YSRN,0,IATA+ICAO+pais+coordenadas
+27149,SWH,YSWH,AU,Swan Hill Airport,Swan Hill,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,11274,Swan Hill Airport,YSWH,0,IATA+ICAO+pais+coordenadas
+27974,XTO,YTAM,AU,Taroom Airport,Taroom,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,11717,Taroom Airport,YTAM,0,IATA+ICAO+pais+coordenadas
+27982,TDR,YTDR,AU,Theodore Airport,Theodore,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8848,Theodore Airport,YTDR,0.723,IATA+ICAO+pais+coordenadas
+27152,TEF,YTEF,AU,Telfer Airport,Telfer,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8265,Telfer Airport,YTEF,0,IATA+ICAO+pais+coordenadas
+27164,WMB,YWBL,AU,Warrnambool Airport,Warrnambool,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,9902,Warrnambool Airport,YWBL,0,IATA+ICAO+pais+coordenadas
+27166,WIO,YWCA,AU,Wilcannia Airport,Wilcannia,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8998,Wilcannia Airport,YWCA,0.576,IATA+ICAO+pais+coordenadas
+27174,WGE,YWLG,AU,Walgett Airport,Walgett,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,7570,Walgett Airport,YWLG,0,IATA+ICAO+pais+coordenadas
+27176,WUN,YWLU,AU,Wiluna Airport,Wiluna,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6335,Wiluna Airport,YWLU,0.398,IATA+ICAO+pais+coordenadas
+27180,WIN,YWTN,AU,Winton Airport,Winton,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6337,Winton Airport,YWTN,0,IATA+ICAO+pais+coordenadas
+27183,WYN,YWYM,AU,Wyndham Airport,Wyndham,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8476,Wyndham Airport,YWYM,0,IATA+ICAO+pais+coordenadas
+27185,YUE,YYND,AU,Yuendumu Airport,Yuendumu ,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,8395,Yuendumu Airport,YYND,0,IATA+ICAO+pais+coordenadas
+27208,COQ,ZMCD,MN,Choibalsan Airport,Choibalsan,https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat,6795,Choibalsan Airport,ZMCD,0.098,IATA+ICAO+pais+coordenadas

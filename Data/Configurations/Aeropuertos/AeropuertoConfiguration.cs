@@ -18,7 +18,7 @@ public sealed class AeropuertoConfiguration : IEntityTypeConfiguration<Aeropuert
         builder.Property(x => x.AeropuertoId).HasColumnName("aeropuerto_id").HasColumnType("integer").IsRequired().ValueGeneratedOnAdd();
         builder.Property(x => x.CodigoIata).HasColumnName("codigo_iata").HasColumnType("character varying(3)").HasMaxLength(3).IsRequired();
         builder.Property(x => x.Nombre).HasColumnName("nombre").HasColumnType("character varying(150)").HasMaxLength(150).IsRequired();
-        builder.Property(x => x.Ciudad).HasColumnName("ciudad").HasColumnType("character varying(100)").HasMaxLength(100).IsRequired();
+        builder.Property(x => x.Ciudad).HasColumnName("ciudad").HasColumnType("character varying(100)").HasMaxLength(100).IsRequired(false);
         builder.Property(x => x.Pais).HasColumnName("pais").HasColumnType("character varying(100)").HasMaxLength(100).IsRequired();
         builder.Property(x => x.IdOrigen).HasColumnName("id_origen").HasColumnType("bigint");
         builder.Property(x => x.Identificador).HasColumnName("identificador").HasMaxLength(50);

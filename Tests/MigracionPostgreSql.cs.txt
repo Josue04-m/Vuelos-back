@@ -21,8 +21,8 @@ internal static class MigracionPostgreSql
             .UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused",
                 o=>o.MigrationsHistoryTable("__EFMigrationsHistory","pna")).Options);
         var assembly=db.GetService<IMigrationsAssembly>();
-        Check(assembly.Migrations.Count==1,"Solo una migración activa");
-        var entry=assembly.Migrations.Single();
+        Check(assembly.Migrations.Count==2,"Solo migraciones PostgreSQL esperadas");
+        var entry=assembly.Migrations.Single(m=>m.Key.EndsWith("_InicialPostgreSql"));
         Check(entry.Key=="20261111050328_InicialPostgreSql" && assembly.ModelSnapshot!.GetType().Namespace=="Vuelos_Backend.Data.Migrations.PostgreSql","Historial separado");
         Check(!db.Database.HasPendingModelChanges(),"Snapshot pendiente");
         var migration=assembly.CreateMigration(entry.Value,db.Database.ProviderName!);
@@ -76,6 +76,18 @@ internal static class MigracionPostgreSql
         var root=Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(AppDbContext).Assembly.Location)!,"..",".."));
         var saved=File.ReadAllText(Path.Combine(root,"Data/Scripts/Supabase_InicialPostgreSql.sql"));
         Check(Normalize(script)==Normalize(saved),"El SQL para revisión no coincide con la migración compilada");
+        var ciudadEntry=assembly.Migrations.Single(m=>m.Key.EndsWith("_CiudadAeropuertoOpcional"));
+        var ciudad=assembly.CreateMigration(ciudadEntry.Value,db.Database.ProviderName!);
+        Check(ciudad.UpOperations.Count==1 && ciudad.UpOperations.Single() is AlterColumnOperation change &&
+            change.Table=="aeropuertos" && change.Schema=="pna" && change.Name=="ciudad" && change.IsNullable && !change.OldColumn.IsNullable,
+            "La nueva migración solo admite NULL en ciudad");
+        Check(ciudad.DownOperations.First() is SqlOperation ciudadGuard && ciudadGuard.Sql.Contains("RAISE EXCEPTION") && ciudadGuard.Sql.Contains("ciudad IS NULL"),
+            "Reversión sin inventar ciudades");
+        var ciudadScript=migrator.GenerateScript(entry.Key,ciudadEntry.Key,MigrationsSqlGenerationOptions.Idempotent);
+        Check(ciudadScript.Contains("DROP NOT NULL") && !ciudadScript.Contains("CREATE TABLE pna.aeropuertos") && !ciudadScript.Contains("DROP TABLE"),
+            "SQL incremental sin recrear datos");
+        var ciudadSaved=Path.Combine(root,"Data/Scripts/Supabase_CiudadAeropuertoOpcional.sql");
+        Check(Normalize(ciudadScript)==Normalize(File.ReadAllText(ciudadSaved)),"SQL incremental coincide con migración");
         Check(File.ReadAllText(Path.Combine(root,"Data/Migrations/AppDbContextModelSnapshot.cs")).Contains("SqlServer"),"Snapshot histórico sobrescrito");
         var verify=Regex.Replace(File.ReadAllText(Path.Combine(root,"Data/Scripts/Supabase_VerificarInstalacion.sql")),@"--[^\n]*","");
         Check(verify.Split(';',StringSplitOptions.RemoveEmptyEntries).Where(s=>!string.IsNullOrWhiteSpace(s)).All(s=>s.TrimStart().StartsWith("SELECT",StringComparison.OrdinalIgnoreCase)),"Verificación manual debe ser solo lectura");

@@ -1,0 +1,17 @@
+using System.IO;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Vuelos_Backend.Data;
+
+internal static class GenerarSqlCiudad
+{
+    public static void Main()
+    {
+        using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused", o=>o.MigrationsHistoryTable("__EFMigrationsHistory","pna")).Options);
+        var sql=db.GetService<IMigrator>().GenerateScript("20261111050328_InicialPostgreSql","20261113000000_CiudadAeropuertoOpcional",MigrationsSqlGenerationOptions.Idempotent);
+        File.WriteAllText(@"C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\Data\Scripts\Supabase_CiudadAeropuertoOpcional.sql",sql);
+        System.Console.WriteLine("SQL incremental generado sin abrir conexión ni aplicar migración.");
+    }
+}

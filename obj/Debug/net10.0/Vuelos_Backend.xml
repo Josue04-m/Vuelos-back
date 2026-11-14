@@ -103,6 +103,9 @@
         <member name="M:Vuelos_Backend.Data.Migrations.PostgreSql.InicialPostgreSql.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
             <inheritdoc />
         </member>
+        <member name="M:Vuelos_Backend.Data.Migrations.PostgreSql.CiudadAeropuertoOpcional.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
         <member name="M:Vuelos_Backend.Integrations.EcuadorLegal.EcuadorLegalNombreExtractor.Celdas">
             <remarks>
             Pattern:<br/>

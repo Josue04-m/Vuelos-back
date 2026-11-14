@@ -12,7 +12,7 @@ Las columnas necesarias son `type`, `name`, `municipality`, `iso_country`, `iata
 |---|---|---|
 | `iata_code` | `codigo_iata` | Tres letras A-Z, únicas; se normalizan a mayúsculas |
 | `name` | `nombre` | Obligatorio, hasta 150 caracteres |
-| `municipality` | `ciudad` | Obligatoria, hasta 100 caracteres; no se inventa a partir del nombre |
+| `municipality` | `ciudad` | Opcional: vacío, espacios o `\N` se guardan como NULL; si hay texto, hasta 100 caracteres sin controles |
 | `iso_country` | `pais` | Se guarda el código ISO de dos letras, por ejemplo EC; no el nombre completo del país |
 
 También se guardan estos campos adicionales en columnas propias y se devuelven dentro de `metadatos` en las consultas administrativas y la vista previa:
@@ -57,7 +57,7 @@ Solo rol **admin**, con `Authorization: Bearer TOKEN`. Ambos endpoints aceptan *
 
 La selección siempre excluye tipos distintos de `small_airport`, `medium_airport`, `large_airport`, y filas sin IATA. El resumen informa esas omisiones. No se usa ICAO/GPS como sustituto de un código IATA faltante.
 
-Sin autorización de omisión, una ciudad vacía, un país incorrecto o textos demasiado largos bloquean la confirmación. `omitirIncompletos=true` omite esas filas con conteo explícito; no modifica sus datos. Los códigos IATA repetidos entre filas válidas y las filas mal formadas siguen siendo errores bloqueantes.
+La ciudad vacía se admite y se guarda como NULL sin activar `omitirIncompletos`. País incorrecto, nombre vacío o textos demasiado largos siguen bloqueando la confirmación; `omitirIncompletos=true` permite omitir esas filas con conteo explícito. Los códigos IATA repetidos entre filas válidas y las filas mal formadas siguen siendo errores bloqueantes.
 
 Límites: archivo de hasta **20 MiB**, cuerpo multipart hasta **24 MiB**, **150000 registros de origen** y **20000 aeropuertos importables** por solicitud. La confirmación procesa todos los seleccionados, **no solo la página visible**.
 
@@ -93,7 +93,13 @@ Errores de archivo/formulario devuelven 400 ProblemDetails con `archivo_aeropuer
 5. Confirmar con el mismo archivo y filtros revisados. Cambiar archivo o filtros invalida la vista previa anterior. La paginación solo cambia la vista, no el alcance de la carga.
 6. Mostrar `importado` o el aviso de códigos ya registrados. Deshabilitar doble pulsación. Si se pierde la respuesta, revalidar/reintentar el mismo archivo; no se duplican códigos existentes.
 
-Para el archivo revisado, con servicio regular y sin filtro de país: 67 registros con IATA tienen ciudad vacía. Por defecto bloquean la carga. Al autorizar omitir incompletos resultan **3941 importables y 82402 omitidos** de 86343. Estas cifras describen esta versión del archivo, no garantizan que un archivo futuro tenga los mismos totales. La vista previa contra la base también debe comprobar códigos existentes.
+Para el archivo original de 86343 filas, se admiten ciudades NULL: con servicio regular hay **4008 importables**; con `soloServicioRegular=false` y sin filtro de país hay **8799 importables**, sin omitir incompletos. Los demás no tienen IATA o son tipos no admitidos. Los conteos describen filas válidas, no inserciones nuevas: la vista previa también comprueba los códigos existentes y el importador actual aún bloquea mezclas de nuevos y registrados.
+
+### Ciudad opcional en Supabase
+
+Antes de importar ciudades NULL, aplicar manualmente `20261113000000_CiudadAeropuertoOpcional` o el SQL incremental idempotente `Data/Scripts/Supabase_CiudadAeropuertoOpcional.sql` desde Supabase SQL Editor. Usar solo una vía. La migración solo retira NOT NULL de `pna.aeropuertos.ciudad`; no modifica los valores existentes, otras columnas, índices ni relaciones. No se ejecutó automáticamente.
+
+Modelo, DTOs de catálogos y origen/destino de vuelos admiten `ciudad: null`. Flutter debe mostrar el nombre del aeropuerto cuando falte ciudad. La reversión de la migración se rechaza si todavía hay ciudades NULL para evitar inventar valores.
 
 ## Persistencia y codificación
 

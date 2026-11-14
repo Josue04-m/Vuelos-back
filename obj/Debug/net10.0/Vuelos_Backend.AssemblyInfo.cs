@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Vuelos_Backend")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+677d6fd9e42e61b40063451a34fd6e1e3515b304")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0cfd2771aedc0c91547ee1d0971205753888bb97")]
 [assembly: System.Reflection.AssemblyProductAttribute("Vuelos_Backend")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Vuelos_Backend")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

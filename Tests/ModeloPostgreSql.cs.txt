@@ -73,10 +73,13 @@ internal static class ModeloPostgreSql
         Check(entities.SelectMany(e => e.GetIndexes()).Any(i => i.GetDatabaseName() == "UX_detalle_reservas_asiento_activo" &&
             i.IsUnique && i.GetFilter() == "\"estado\" = 'activo'"), "Falta unicidad de asiento activo");
         var migrations = db.GetService<IMigrationsAssembly>();
-        Check(migrations.Migrations.Count == 1 && migrations.Migrations.Single().Key.EndsWith("_InicialPostgreSql") &&
+        Check(migrations.Migrations.Count == 2 && migrations.Migrations.Keys.Any(k => k.EndsWith("_InicialPostgreSql")) &&
+            migrations.Migrations.Keys.Any(k => k.EndsWith("_CiudadAeropuertoOpcional")) &&
             migrations.ModelSnapshot?.GetType().Namespace == "Vuelos_Backend.Data.Migrations.PostgreSql",
             "Solo debe descubrirse la migración/snapshot PostgreSQL");
         Check(!db.Database.HasPendingModelChanges(), "Snapshot PostgreSQL diferente del modelo actual");
+        Check(model.FindEntityType(typeof(Vuelos_Backend.Models.Aeropuertos.Aeropuerto))!.FindProperty("Ciudad")!.IsNullable,
+            "Ciudad de aeropuerto debe aceptar NULL");
         var sql = db.Database.GenerateCreateScript();
         Check(sql.Contains("CREATE TABLE pna.") || sql.Contains("CREATE TABLE \"pna\"."), "DDL sin esquema pna");
         Check(!sql.Contains("[dbo]") && !sql.Contains("GETDATE()") && !sql.Contains("GETUTCDATE()"), "DDL SQL Server");

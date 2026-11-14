@@ -39,7 +39,6 @@ namespace Vuelos_Backend.Data.Migrations.PostgreSql
                         .HasColumnName("activo");
 
                     b.Property<string>("Ciudad")
-                        .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("ciudad");

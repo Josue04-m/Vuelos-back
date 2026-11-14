@@ -11,7 +11,7 @@ public sealed record BusquedaCatalogoRequest
 }
 
 /// <summary>Aeropuerto activo en formato mínimo para selectores. No incluye metadatos de importación.</summary>
-public sealed record AeropuertoResumenResponse(int AeropuertoId, string CodigoIata, string? CodigoIcao, string Nombre, string Ciudad, string Pais);
+public sealed record AeropuertoResumenResponse(int AeropuertoId, string CodigoIata, string? CodigoIcao, string Nombre, string? Ciudad, string Pais);
 
 /// <summary>Avión activo en formato mínimo para selectores.</summary>
 public sealed record AvionResumenResponse(int AvionId, string Modelo, string Matricula, int CapacidadTotal);

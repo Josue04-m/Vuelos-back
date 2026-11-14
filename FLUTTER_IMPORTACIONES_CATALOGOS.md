@@ -122,7 +122,7 @@ Respuesta `ImportacionAeropuertosResponse`: `estado`, `mensaje`, `puedeImportar`
 
 Cada fila incluye `fila`, `codigoIata`, `nombre`, `ciudad`, `pais`, `codigoRegistrado`, `aeropuertoId` nullable y `metadatos` nullable. Se muestran hasta 200 errores globales, con `fila`, `campo`, `mensaje`; no corresponden solo a la página visible. Si erroresTruncados=true, informar que la lista no contiene todos los errores. No interpretar totalErrores como número de filas: una fila puede tener varios errores.
 
-Para el archivo de referencia revisado, sin filtro de país: 67 registros seleccionados no tienen ciudad. Al autorizar omitirlos resultan 3941 importables. Mostrar los totales de la respuesta real; no codificar estas cifras en Flutter.
+La ciudad es opcional: mostrar `ciudad: null` como “Sin ciudad” o utilizar el nombre del aeropuerto. No solicitar activar omisión por faltar ciudad. En el CSV original hay 4008 importables con servicio regular y 8799 sin ese filtro, antes de comprobar existentes. Mostrar siempre los totales reales de la API, sin fijar estas cifras en Flutter. Requiere aplicar manualmente la migración PostgreSQL CiudadAeropuertoOpcional.
 
 ## Estados comunes de la importación
 
@@ -180,7 +180,7 @@ Hacer que la deserialización tolere `metadatos=null`, campos internos null y pr
 
 1. Solo admin ve Configuración y las acciones de carga. Los catálogos tienen consultas sin botones CRUD retirados.
 2. CSV de aviones válido: vista previa, confirmación, lectura de metadatos y consulta de asientos generados por backend.
-3. CSV de aeropuertos: filtros, resumen de omisiones, ciudades faltantes bloqueadas por defecto y omisión solo tras decisión explícita.
+3. CSV de aeropuertos: filtros, resumen de omisiones, ciudades faltantes aceptadas como NULL; la omisión explícita sigue aplicándose a errores reales.
 4. Cambiar de página no dispara importaciones parciales ni pierde el archivo/filtros. Confirmar procesa el total global revisado.
 5. Reenviar el mismo archivo muestra ya_importados; coincidencias parciales no se presentan como éxito.
 6. Formularios admiten carga/vacío/error, doble pulsación, sesión expirada, 403, 413 y timeout sin escrituras duplicadas.

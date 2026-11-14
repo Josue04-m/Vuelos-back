@@ -68,9 +68,11 @@ internal static class ImportacionAeropuertosChecks
         Check((await parser.ValidarAsync(Request(Header+Row.Replace("yes","no")) with {SoloServicioRegular=false},Ct)).PuedeImportar,"servicio no regular requiere selección explícita");
         var incomplete=Header+Row+Row.Replace("Quito","").Replace("UIO","XXX");
         var blocked=await parser.ValidarAsync(Request(incomplete),Ct);
-        Check(!blocked.PuedeImportar && blocked.TotalErrores==1 && blocked.Errores[0].Campo=="municipality" && blocked.TotalOmitidos==0,"ciudad vacía bloquea por defecto sin inventarla");
+        Check(blocked.PuedeImportar && blocked.TotalErrores==0 && blocked.Filas.Single(f=>f.CodigoIata=="XXX").Ciudad is null,"ciudad vacía es NULL sin inventarla");
+        foreach(var value in new[]{"   ","\\N"})
+            Check((await parser.ValidarAsync(Request(Header+Row.Replace("Quito",value)),Ct)).Filas.Single().Ciudad is null,"espacios y nulo CSV se normalizan a NULL");
         var skipped=await parser.ImportarAsync(Request(incomplete) with {OmitirIncompletos=true},Ct);
-        Check(skipped.AeropuertosImportados==1 && skipped.TotalOmitidos==1 && skipped.ResumenOmisiones["datos_incompletos_o_invalidos"]==1,"incompletos solo omitidos con autorización explícita");
+        Check(skipped.AeropuertosImportados==2 && skipped.TotalOmitidos==0 && (await clean.ObtenerPorCodigosIataAsync(new[]{"XXX"},Ct)).Single().Ciudad is null,"persiste ciudad NULL sin omitir aeropuerto");
         foreach(var text in new[]{Header+Row+Row,Header+Row.Replace("UIO","12A"),Header+Row.Replace("EC","Ecuador"),Header+Row.Replace("Aeropuerto de prueba",new string('a',151)),Header+Row.Replace("Quito",new string('a',101)),Header+"faltan,columnas\n",Header})
         {
             var invalid=await parser.ImportarAsync(Request(text),Ct);
@@ -86,7 +88,7 @@ internal static class ImportacionAeropuertosChecks
         await Error(()=>parser.ValidarAsync(Request(Header+"\"comillas sin cerrar"),Ct),"archivo_aeropuertos_invalido");
         await Error(()=>parser.ValidarAsync(Request(csv) with {PaisIso="Ecuador"},Ct),"archivo_aeropuertos_invalido");
         await Error(()=>parser.ValidarAsync(Request(csv) with {TamanoPagina=201},Ct),"archivo_aeropuertos_invalido");
-        var errors=await parser.ValidarAsync(Request(Header+string.Concat(Enumerable.Repeat(Row.Replace("Quito",""),250))),Ct);
+        var errors=await parser.ValidarAsync(Request(Header+string.Concat(Enumerable.Repeat(Row.Replace("Quito",new string('a',101)),250))),Ct);
         Check(errors.TotalErrores>200 && errors.Errores.Count==200 && errors.ErroresTruncados,"respuesta de errores acotada con conteo total");
         var fail=new MemoryCatalogosRepository(){FallarAeropuertosDespues=2};
         await Error(()=>new ImportacionAeropuertosService(fail).ImportarAsync(Request(csv),Ct),"fallo_aeropuertos");
@@ -103,7 +105,9 @@ internal static class ImportacionAeropuertosChecks
         var actual=new ImportacionAeropuertosService(new MemoryCatalogosRepository());
         var actualBlocked=await actual.ValidarAsync(Request(bytes,"airports.csv"),Ct);
         var actualReady=await actual.ValidarAsync(Request(bytes,"airports.csv") with {OmitirIncompletos=true},Ct);
-        Check(actualBlocked.TotalRegistros>80000 && actualBlocked.TotalErrores>0 && !actualBlocked.PuedeImportar,"archivo real requiere revisar ciudades faltantes");
+        Check(actualBlocked.TotalRegistros>80000 && actualBlocked.TotalErrores==0 && actualBlocked.PuedeImportar,"archivo original admite ciudades faltantes sin omisión");
+        var todos=await actual.ValidarAsync(Request(bytes,"airports.csv") with {SoloServicioRegular=false},Ct);
+        Check(todos.TotalImportables==8799 && todos.TotalErrores==0 && todos.PuedeImportar,"8799 aeropuertos originales importables sin servicio regular y con ciudad opcional");
         Check(actualReady.PuedeImportar && actualReady.TotalImportables>3000 && actualReady.Filas.Count==100 && actualReady.TotalOmitidos>0,"archivo real procesado y paginado sin importación SQL");
         Console.WriteLine($"Archivo airports: {actualReady.TotalRegistros} registros; {actualReady.TotalImportables} importables; {actualReady.TotalOmitidos} omitidos con autorización; {actualBlocked.TotalErrores} errores por defecto.");
         await HttpChecks();
@@ -175,7 +179,9 @@ internal static class ImportacionAeropuertosChecks
         foreach(var url in new[]{path,path+"/validar"})Check((await Send(url)).StatusCode==HttpStatusCode.Forbidden,"cliente 403 "+url);
         http.DefaultRequestHeaders.Remove("Authorization");http.DefaultRequestHeaders.Add("Authorization","Bearer admin");
         var pre=await Send(path+"/validar");Check(pre.StatusCode==HttpStatusCode.OK && (await pre.Content.ReadFromJsonAsync<ImportacionAeropuertosResponse>())!.PuedeImportar,"vista previa multipart admin");
-        Check((await Send(path,Header+Row.Replace("Quito",""))).StatusCode==HttpStatusCode.BadRequest,"incompletos HTTP 400");
+        Check((await Send(path,Header+Row.Replace("Aeropuerto de prueba",""))).StatusCode==HttpStatusCode.BadRequest,"nombre obligatorio HTTP 400");
+        var sinCiudad=await Send(path,Header+Row.Replace("Quito","").Replace("UIO","ZZZ"));
+        Check(sinCiudad.StatusCode==HttpStatusCode.OK && (await sinCiudad.Content.ReadFromJsonAsync<ImportacionAeropuertosResponse>())!.Filas.Single().Ciudad is null,"importación HTTP conserva ciudad NULL");
         Check((await Send(path)).StatusCode==HttpStatusCode.OK,"confirmación HTTP 200");
         var repeat=await Send(path);Check((await repeat.Content.ReadFromJsonAsync<ImportacionAeropuertosResponse>())!.Estado=="ya_importados","repetición HTTP sin duplicar");
         Check((await Send(path,Header+Row+Row.Replace("UIO","GYE"))).StatusCode==HttpStatusCode.Conflict,"conflicto parcial HTTP 409");
