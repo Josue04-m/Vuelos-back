@@ -112,7 +112,7 @@ La opción **Omitir registros incompletos o inválidos** debe ser una decisión 
 
 ### Vista previa y confirmación
 
-Mostrar `totalRegistros`, `totalImportables`, `totalOmitidos`, `totalErrores`, `totalExistentes` y el desglose de `resumenOmisiones`. Los motivos posibles son `tipo_no_admitido`, `sin_servicio_regular`, `fuera_del_pais`, `sin_iata`, `datos_incompletos_o_invalidos`; mapearlos a etiquetas legibles.
+Mostrar `totalRegistros`, `totalImportables`, `totalOmitidos`, `totalErrores`, `totalExistentes` y el desglose de `resumenOmisiones`. Los motivos posibles son `tipo_no_admitido`, `sin_servicio_regular`, `fuera_del_pais`, `sin_iata`, `datos_incompletos_o_invalidos` e `iata_ya_registrado` (aeropuertos ya registrados, omitidos sin error); mapearlos a etiquetas legibles.
 
 `filas` es una vista paginada de la selección válida. Para cambiar de página hay que reenviar el archivo y los mismos filtros a **validar**, ajustando pagina/tamanoPagina; no existe una sesión de importación ni un token de vista previa en el backend. Conservar el archivo/bytes mientras se navegan las páginas. Si se pierde ese contexto al cerrar la pantalla, pedir seleccionar y validar de nuevo.
 
@@ -134,13 +134,13 @@ La ciudad es opcional: mostrar `ciudad: null` como “Sin ciudad” o utilizar e
 | `errores_validacion` | Mostrar lista de errores; deshabilitar Confirmar |
 | `ya_importados` | Mostrar mensaje informativo **Ya se importaron / ya están registrados**; deshabilitar Confirmar. No crear nuevas identidades |
 | `conflicto_matriculas` | Aviones: algunas matrículas existen. Explicar que no se importó nada y pedir corregir el archivo |
-| `conflicto_codigos` | Aeropuertos: algunos IATA existen. Explicar que no se importó nada y pedir corregir el archivo |
+| `valido` con `totalExistentes > 0` | Aeropuertos: mostrar que se omitirán los existentes y permitir confirmar los nuevos; no pedir retirar filas |
 | `importado` | Mostrar cantidades realmente guardadas y refrescar el catálogo; deshabilitar el botón de ese envío completado |
 | Desconocido | Mostrar mensaje seguro y permitir revisar/actualizar; no asumir éxito |
 
 Cambiar archivo, clases o filtros invalida la validación anterior. Si cambia la opción de omitir incompletos, validar otra vez y mostrar nuevos totales. Cambiar de página en aeropuertos no cambia la selección global, pero la respuesta vigente debe seguir siendo válida antes de confirmar.
 
-No omitir duplicados silenciosamente desde Flutter ni cambiar matrículas/IATA automáticamente. Una coincidencia parcial bloquea toda la transacción; no existen resultados de confirmación parcialmente guardados.
+No omitir duplicados desde Flutter ni cambiar matrículas/IATA. Para aeropuertos, el backend omite IATA existentes y los cuenta en `resumenOmisiones.iata_ya_registrado`; `totalImportables` son los nuevos, `totalExistentes` los omitidos y `totalOmitidos` incluye esos existentes. La vista paginada incluye ambos para revisión. El resto se inserta en una sola transacción: un fallo real revierte todos los nuevos. En aviones, la coincidencia parcial de matrículas sigue bloqueando toda la importación.
 
 ## Adaptación de modelos y widgets de detalle
 
@@ -182,7 +182,7 @@ Hacer que la deserialización tolere `metadatos=null`, campos internos null y pr
 2. CSV de aviones válido: vista previa, confirmación, lectura de metadatos y consulta de asientos generados por backend.
 3. CSV de aeropuertos: filtros, resumen de omisiones, ciudades faltantes aceptadas como NULL; la omisión explícita sigue aplicándose a errores reales.
 4. Cambiar de página no dispara importaciones parciales ni pierde el archivo/filtros. Confirmar procesa el total global revisado.
-5. Reenviar el mismo archivo muestra ya_importados; coincidencias parciales no se presentan como éxito.
+5. Reenviar el mismo archivo muestra ya_importados. En aeropuertos, una mezcla de nuevos y existentes importa los nuevos y muestra los existentes omitidos. Las matrículas parciales de aviones mantienen su rechazo.
 6. Formularios admiten carga/vacío/error, doble pulsación, sesión expirada, 403, 413 y timeout sin escrituras duplicadas.
 7. Listados y detalles manejan Unicode, códigos repetidos entre modelos de avión, cantidades cero, metadatos null y coordenadas numéricas sin errores.
 8. Pruebas en las plataformas que entregue el equipo (móvil/web), incluyendo selección de archivos y diseño sin desbordamientos.

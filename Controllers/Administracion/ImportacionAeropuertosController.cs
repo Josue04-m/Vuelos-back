@@ -20,7 +20,7 @@ public sealed class ImportacionAeropuertosController(IImportacionAeropuertosServ
         Ok(await service.ValidarAsync(request, ct));
 
     /// <summary>Importa toda la selección en una transacción. No sobrescribe ni duplica códigos IATA existentes.</summary>
-    /// <remarks>Reenviar archivo y filtros revisados. Pagina/TamanoPagina afectan solo la respuesta. 200 importado/ya_importados; 400 errores; 409 códigos parcialmente registrados. No importa únicamente la página visible.</remarks>
+    /// <remarks>Reenviar archivo y filtros revisados. Pagina/TamanoPagina afectan solo la respuesta. Los IATA existentes se omiten automáticamente, incluso si están inactivos. 200 importado/ya_importados; 400 errores reales. No importa únicamente la página visible.</remarks>
     [HttpPost, ProducesResponseType<ImportacionAeropuertosResponse>(200)]
     [ProducesResponseType<ImportacionAeropuertosResponse>(400), ProducesResponseType<ImportacionAeropuertosResponse>(409)]
     public async Task<ActionResult<ImportacionAeropuertosResponse>> Importar([FromForm] ImportarAeropuertosRequest request, CancellationToken ct)
@@ -29,7 +29,6 @@ public sealed class ImportacionAeropuertosController(IImportacionAeropuertosServ
         return response.Estado switch
         {
             "errores_validacion" => BadRequest(response),
-            "conflicto_codigos" => Conflict(response),
             _ => Ok(response)
         };
     }

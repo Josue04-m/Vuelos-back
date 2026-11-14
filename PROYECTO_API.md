@@ -2,6 +2,8 @@
 
 ## 1. Propósito y alcance
 
+Actualización de importación de aeropuertos: omitir automáticamente IATA existentes, incluidos los inactivos, y guardar solo nuevos bajo la transacción y bloqueo administrativo existentes. No sobrescribir ni reactivar registros. Contar existentes como omisiones `iata_ya_registrado`, sin errores. La carga mixta deja de responder `conflicto_codigos`; si todos existen, responder `ya_importados`. No requiere migración. Ver `IMPORTACION_AEROPUERTOS.md`.
+
 Actualización de importación: `ciudad` de aeropuerto es opcional y se conserva como NULL si `municipality` está vacío o indica `\N`. Modelo, DTOs e importador están adaptados; aplicar manualmente la migración PostgreSQL `CiudadAeropuertoOpcional` o `Data/Scripts/Supabase_CiudadAeropuertoOpcional.sql`. IATA, nombre y país mantienen sus validaciones. Ver `IMPORTACION_AEROPUERTOS.md`.
 
 Requerimiento adicional: consulta pública paginada de aeropuertos por país en `GET /api/aeropuertos`, sin token. Contrato, límites y responsabilidades de Flutter: `docs/REQUERIMIENTO_BUSQUEDA_PUBLICA_AEROPUERTOS.md`. La administración permanece protegida; no cambia los permisos de consulta de vuelos ni de reservas/pagos.

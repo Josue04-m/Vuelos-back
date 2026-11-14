@@ -77,7 +77,7 @@ La respuesta `ImportacionAeropuertosResponse` incluye:
 | `valido` | 200 | — | Revisar selección y omisiones; habilitar Confirmar |
 | `importado` | — | 200 | Mostrar cantidad importada y refrescar catálogo |
 | `ya_importados` | 200 | 200 | Informar que ya existen; no crear registros ni habilitar confirmación |
-| `conflicto_codigos` | 200 | 409 | Retirar códigos existentes del archivo; no se importa parcialmente |
+| `valido` con existentes | 200 | 200 `importado` | Los IATA existentes se omiten automáticamente; se guardan únicamente los nuevos |
 | `errores_validacion` | 200 | 400 | Corregir filas o autorizar omisiones cuando corresponda |
 
 Mensaje de repetición: **«Estos aeropuertos ya se importaron o sus códigos IATA ya están registrados. No se creó ningún registro.»** Se detecta por código IATA, no por nombre del archivo; incluye registros que se crearon manualmente antes de retirar el CRUD. No se sobrescriben datos ni se reactivan registros.
@@ -93,7 +93,7 @@ Errores de archivo/formulario devuelven 400 ProblemDetails con `archivo_aeropuer
 5. Confirmar con el mismo archivo y filtros revisados. Cambiar archivo o filtros invalida la vista previa anterior. La paginación solo cambia la vista, no el alcance de la carga.
 6. Mostrar `importado` o el aviso de códigos ya registrados. Deshabilitar doble pulsación. Si se pierde la respuesta, revalidar/reintentar el mismo archivo; no se duplican códigos existentes.
 
-Para el archivo original de 86343 filas, se admiten ciudades NULL: con servicio regular hay **4008 importables**; con `soloServicioRegular=false` y sin filtro de país hay **8799 importables**, sin omitir incompletos. Los demás no tienen IATA o son tipos no admitidos. Los conteos describen filas válidas, no inserciones nuevas: la vista previa también comprueba los códigos existentes y el importador actual aún bloquea mezclas de nuevos y registrados.
+Para el archivo original de 86343 filas, se admiten ciudades NULL: con servicio regular hay **4008 candidatos válidos**; con `soloServicioRegular=false` y sin filtro de país hay **8799 candidatos válidos**, sin omitir incompletos. Los demás no tienen IATA o son tipos no admitidos. La vista previa resta los IATA existentes: TotalImportables son los nuevos, TotalExistentes los omitidos y TotalOmitidos incluye estos últimos con motivo `iata_ya_registrado`. Si hay 48 existentes entre 8799 candidatos, se importan 8751 y se omiten 48 sin errores. Se conservan datos, IDs y estado de los existentes, incluidos inactivos. Filas/TotalPaginas siguen mostrando todos los candidatos válidos para poder revisar también los omitidos. La confirmación vuelve a comprobar existentes dentro de la transacción y su bloqueo administrativo. Si todos existen, responde `ya_importados` sin escribir.
 
 ### Ciudad opcional en Supabase
 

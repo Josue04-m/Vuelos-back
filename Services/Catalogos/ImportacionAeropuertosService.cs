@@ -30,12 +30,15 @@ public sealed class ImportacionAeropuertosService(ICatalogosAdminRepository repo
         await using var tx = await repository.IniciarTransaccionAsync(ct);
         var vista = await EvaluarAsync(request, datos, ct);
         if (!vista.PuedeImportar) return vista;
-        var nuevos = datos.Filas.Select(MetadatosAeropuerto.Crear).ToArray();
+        var nuevos = datos.Filas.Where(f => !f.CodigoRegistrado).Select(MetadatosAeropuerto.Crear).ToArray();
         await repository.CrearAeropuertosAsync(nuevos, ct);
         await tx.ConfirmarAsync(ct);
         var porCodigo = nuevos.ToDictionary(a => a.CodigoIata, StringComparer.OrdinalIgnoreCase);
-        datos.Filas = datos.Filas.Select(f => f with { CodigoRegistrado = true, AeropuertoId = porCodigo[f.CodigoIata].AeropuertoId }).ToList();
-        return Resultado(request, datos, "importado", "Aeropuertos importados correctamente.", nuevos.Length);
+        datos.Filas = datos.Filas.Select(f => porCodigo.TryGetValue(f.CodigoIata, out var a)
+            ? f with { CodigoRegistrado = true, AeropuertoId = a.AeropuertoId } : f).ToList();
+        return Resultado(request, datos, "importado", datos.TotalExistentes > 0
+            ? $"Se importaron {nuevos.Length} aeropuertos nuevos. Se omitieron {datos.TotalExistentes} aeropuertos ya registrados, sin modificarlos."
+            : "Aeropuertos importados correctamente.", nuevos.Length);
     }
 
     private async Task<ImportacionAeropuertosResponse> EvaluarAsync(ImportarAeropuertosRequest request, Datos datos, CancellationToken ct)
@@ -44,13 +47,12 @@ public sealed class ImportacionAeropuertosService(ICatalogosAdminRepository repo
         var existentes = await repository.ObtenerPorCodigosIataAsync(datos.Filas.Select(f => f.CodigoIata).ToArray(), ct);
         var porCodigo = existentes.ToDictionary(a => a.CodigoIata.Trim(), StringComparer.OrdinalIgnoreCase);
         datos.Filas = datos.Filas.Select(f => porCodigo.TryGetValue(f.CodigoIata, out var a) ? f with { CodigoRegistrado = true, AeropuertoId = a.AeropuertoId } : f).ToList();
+        datos.TotalExistentes = datos.Filas.Count(f => f.CodigoRegistrado);
+        if (datos.TotalExistentes > 0) datos.Omisiones["iata_ya_registrado"] = datos.TotalExistentes;
         if (datos.Filas.All(f => f.CodigoRegistrado)) return Resultado(request, datos, "ya_importados", "Estos aeropuertos ya se importaron o sus códigos IATA ya están registrados. No se creó ningún registro.");
-        if (datos.Filas.Any(f => f.CodigoRegistrado))
-        {
-            foreach (var f in datos.Filas.Where(f => f.CodigoRegistrado)) datos.Error(f.Fila, "iata_code", "El código IATA ya está registrado, incluso si el aeropuerto está inactivo.");
-            return Resultado(request, datos, "conflicto_codigos", "Algunos códigos IATA ya existen. Retire esas filas y vuelva a validar; no se importó ningún aeropuerto.");
-        }
-        return Resultado(request, datos, "valido", "Revise la vista previa y el resumen de omisiones antes de confirmar.");
+        return Resultado(request, datos, "valido", datos.TotalExistentes > 0
+            ? $"Algunos aeropuertos ya están registrados: se omitirán {datos.TotalExistentes} y se importarán {datos.Filas.Count - datos.TotalExistentes} nuevos. Revise la vista previa antes de confirmar."
+            : "Revise la vista previa y el resumen de omisiones antes de confirmar.");
     }
 
     private static async Task<Datos> LeerAsync(ImportarAeropuertosRequest request, CancellationToken ct)
@@ -163,14 +165,14 @@ public sealed class ImportacionAeropuertosService(ICatalogosAdminRepository repo
     }
 
     private static ImportacionAeropuertosResponse Resultado(ImportarAeropuertosRequest request, Datos datos, string estado, string mensaje, int importados = 0) =>
-        new(estado, mensaje, estado == "valido", datos.TotalRegistros, datos.Filas.Count, datos.Omisiones.Values.Sum(), datos.TotalErrores,
-            datos.TotalErrores > datos.Errores.Count, importados > 0 ? 0 : datos.Filas.Count(f => f.CodigoRegistrado), importados, request.Pagina, request.TamanoPagina,
+        new(estado, mensaje, estado == "valido", datos.TotalRegistros, datos.Filas.Count - datos.TotalExistentes, datos.Omisiones.Values.Sum(), datos.TotalErrores,
+            datos.TotalErrores > datos.Errores.Count, datos.TotalExistentes, importados, request.Pagina, request.TamanoPagina,
             (datos.Filas.Count + request.TamanoPagina - 1) / request.TamanoPagina,
             datos.Filas.Skip((request.Pagina - 1) * request.TamanoPagina).Take(request.TamanoPagina).ToArray(), datos.Errores, datos.Omisiones);
     private static CatalogoOperacionException Invalido(string mensaje) => new(ErrorCatalogo.SolicitudInvalida, "archivo_aeropuertos_invalido", mensaje);
     private sealed class Datos
     {
-        internal int TotalRegistros, TotalErrores;
+        internal int TotalRegistros, TotalErrores, TotalExistentes;
         internal List<FilaImportacionAeropuertoResponse> Filas = [];
         internal readonly List<ErrorImportacionAeropuertoResponse> Errores = [];
         internal readonly Dictionary<string, int> Omisiones = new(StringComparer.Ordinal);
