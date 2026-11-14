@@ -1,0 +1,32 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Vuelos_Backend.Models.Catalogos.DTOs;
+using Vuelos_Backend.Services.Catalogos;
+
+internal static class ValidarCsvPreparado
+{
+    public static async Task<int> Main()
+    {
+        const string root = @"C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\docs\airports_preparado";
+        var service = new ImportacionAeropuertosService(new MemoryCatalogosRepository());
+        foreach (var scenario in new[]{("airports_importables.csv",false,false,8589,0),
+            ("airports_importables.csv",true,false,4006,0),
+            ("airports_completado.csv",false,true,8589,77754)})
+        {
+            using var stream=File.OpenRead(Path.Combine(root,scenario.Item1));
+            var request=new ImportarAeropuertosRequest { Archivo=new FormFile(stream,0,stream.Length,"Archivo",scenario.Item1),
+                SoloServicioRegular=scenario.Item2,OmitirIncompletos=scenario.Item3,TamanoPagina=1 };
+            var result=await service.ValidarAsync(request,CancellationToken.None);
+            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new {archivo=scenario.Item1,soloServicioRegular=scenario.Item2,
+                result.TotalRegistros,result.TotalImportables,result.TotalErrores,result.TotalOmitidos,result.Estado,result.ResumenOmisiones}));
+            if(result.TotalImportables!=scenario.Item4||result.TotalErrores!=0||!result.PuedeImportar)
+                throw new Exception("El validador real no coincide con los conteos esperados.");
+        }
+        Console.WriteLine("OK: 3 escenarios con el importador real, repositorio vacío simulado y cero escrituras.");
+        return 0;
+    }
+}

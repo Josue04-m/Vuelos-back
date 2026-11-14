@@ -1,0 +1,24 @@
+{
+  "registrosOrigen": 86343,
+  "municipiosCompletados": 149,
+  "pendientes": 210,
+  "importablesSinFiltroServicio": 8589,
+  "importablesSoloServicioRegular": 4006,
+  "originalSha256": "e2e65a3ddaf76170c0e2c373cb8b68597bdf3b59d243c4d6db454d48498ba6d7",
+  "fechaConsulta": "2026-11-13",
+  "fuentes": [
+    "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat",
+    "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports-extended.dat"
+  ],
+  "atribucion": "Ciudades contrastadas con OpenFlights, datos y condiciones en https://openflights.org/data.php#license. Open Database License / Database Contents License. El conjunto original procede del archivo airports.csv del proyecto (OurAirports).",
+  "criterio": "IATA exacto, mismo país, distancia entre coordenadas del aeropuerto de hasta 2 km y coincidencia adicional de ICAO o nombre normalizado. No se utilizó la ciudad más cercana ni se infirió del nombre del aeropuerto.",
+  "verificacion": "Validador real ImportacionAeropuertosService con repositorio vacío simulado: 8589 importables, cero errores; con SoloServicioRegular=true, 4006. CSV completo con OmitirIncompletos=true: 8589 importables y 77754 omitidos. Sin escrituras en base.",
+  "originalConservado": true,
+  "notaExistentes": "Los conteos son de filas válidas del archivo, no de inserciones nuevas. La cantidad ya existente depende de la base actual. Si siguen siendo 48 y todos corresponden a esta selección, quedan 8541 nuevos. El importador actual aún bloquea las mezclas de existentes y nuevos; el plan para omitir existentes todavía no se ha aplicado.",
+  "archivos": [
+    "airports_completado.csv",
+    "airports_importables.csv",
+    "airports_ciudades_completadas.csv",
+    "airports_ciudades_pendientes.csv"
+  ]
+}

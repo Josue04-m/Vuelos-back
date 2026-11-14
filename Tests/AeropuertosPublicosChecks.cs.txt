@@ -64,6 +64,7 @@ internal static class AeropuertosPublicosChecks
             var item=root.GetProperty("elementos")[0];
             Check(item.EnumerateObject().Select(x=>x.Name).Order().SequenceEqual(new[]{"aeropuertoId","ciudad","codigoIata","nombre","pais"}.Order()),"solo cinco campos públicos");
             Check(item.GetProperty("pais").GetString()=="EC","país conserva ISO");
+            Check(item.GetProperty("ciudad").ValueKind==JsonValueKind.Null,"ciudad desconocida se devuelve como null");
         }
         foreach(var query in new[]{"","?buscar=","?buscar=%20%20","?buscar=A","?buscar="+new string('a',101),"?buscar=EC&pagina=0","?buscar=EC&tamanoPagina=101","?buscar=EC&tamanoPagina=0","?buscar=EC&pagina=abc"})
         {
@@ -88,7 +89,7 @@ internal static class AeropuertosPublicosChecks
         public Task<PaginaAeropuertosPublicosResponse> BuscarAsync(BuscarAeropuertosPublicosRequest r,CancellationToken ct)
         {
             var total=PaisesBusqueda.Resolver(r.Buscar).Contains("EC")?1:0;
-            AeropuertoPublicoResponse[] rows=total>0&&r.Pagina==1?[new(1,"UIO","Mariscal Sucre","Quito","EC")]:[];
+            AeropuertoPublicoResponse[] rows=total>0&&r.Pagina==1?[new(1,"UIO","Mariscal Sucre",null,"EC")]:[];
             return Task.FromResult(new PaginaAeropuertosPublicosResponse(rows,r.Pagina,r.TamanoPagina,total,total));
         }
     }

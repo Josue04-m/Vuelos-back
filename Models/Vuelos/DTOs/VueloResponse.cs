@@ -1,7 +1,7 @@
 namespace Vuelos_Backend.Models.Vuelos.DTOs;
 
 /// <summary>Aeropuerto de la ruta consultada.</summary>
-public sealed record AeropuertoVueloResponse(int AeropuertoId, string CodigoIata, string Nombre, string Ciudad, string Pais);
+public sealed record AeropuertoVueloResponse(int AeropuertoId, string CodigoIata, string Nombre, string? Ciudad, string Pais);
 
 /// <summary>Datos del avión necesarios para consultar el vuelo.</summary>
 public sealed record AvionVueloResponse(int AvionId, string Modelo, int CapacidadTotal);

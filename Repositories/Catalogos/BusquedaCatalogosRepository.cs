@@ -28,7 +28,7 @@ public sealed class BusquedaCatalogosRepository(AppDbContext context) : IBusqued
             var pattern = PatronesPostgreSql.Contiene(t);
             query = query.Where(a => EF.Functions.ILike(a.CodigoIata, pattern, "!") ||
                 (a.CodigoIcao != null && EF.Functions.ILike(a.CodigoIcao, pattern, "!")) ||
-                EF.Functions.ILike(a.Nombre, pattern, "!") || EF.Functions.ILike(a.Ciudad, pattern, "!") ||
+                EF.Functions.ILike(a.Nombre, pattern, "!") || (a.Ciudad != null && EF.Functions.ILike(a.Ciudad, pattern, "!")) ||
                 EF.Functions.ILike(a.Pais, pattern, "!"));
         }
         var primero = (terminos.FirstOrDefault() ?? "").ToUpperInvariant();

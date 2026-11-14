@@ -14,7 +14,7 @@ public sealed record ImportarAeropuertosRequest
 }
 
 /// <summary>Aeropuerto válido del archivo; el país se conserva como código ISO de dos letras.</summary>
-public sealed record FilaImportacionAeropuertoResponse(int Fila, string CodigoIata, string Nombre, string Ciudad,
+public sealed record FilaImportacionAeropuertoResponse(int Fila, string CodigoIata, string Nombre, string? Ciudad,
     string Pais, bool CodigoRegistrado, int? AeropuertoId, MetadatosAeropuertoResponse? Metadatos = null);
 
 /// <summary>Error localizado por línea física inicial del registro. Fila 1 representa encabezados o límites globales.</summary>

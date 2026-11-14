@@ -19,7 +19,7 @@ foreach ($pack in 'Microsoft.NETCore.App.Ref', 'Microsoft.AspNetCore.App.Ref') {
     $version = Get-ChildItem -LiteralPath $packRoot -Directory | Where-Object Name -Match '^10\.' | Sort-Object { [version]$_.Name } | Select-Object -Last 1
     Get-ChildItem -LiteralPath (Join-Path $version.FullName 'ref/net10.0') -Filter '*.dll' | ForEach-Object { $references[$_.Name] = $_.FullName }
 }
-Get-ChildItem -LiteralPath $outputDirectory -Filter '*.dll' | Where-Object Name -notin @('ModeloPostgreSql.dll','PersistenciaPostgreSql.dll','MigracionPostgreSql.dll','CompletaPostgreSql.dll','IntegracionPostgreSql.dll','UsuariosLaboratorioPostgreSql.dll') | ForEach-Object {
+Get-ChildItem -LiteralPath $outputDirectory -Filter '*.dll' | Where-Object Name -notin @('ModeloPostgreSql.dll','PersistenciaPostgreSql.dll','MigracionPostgreSql.dll','CompletaPostgreSql.dll','IntegracionPostgreSql.dll','UsuariosLaboratorioPostgreSql.dll','GenerarSqlCiudad.dll','ValidarCsvPreparado.dll') | ForEach-Object {
     if (-not $references.ContainsKey($_.Name)) { $references[$_.Name] = $_.FullName }
 }
 $entryPoint = $Comprobacion + 'PostgreSql'

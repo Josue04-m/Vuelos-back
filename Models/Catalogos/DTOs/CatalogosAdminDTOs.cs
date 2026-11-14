@@ -21,7 +21,7 @@ public sealed record FiltroCatalogoRequest : IValidatableObject
 /// <summary>Página de un catálogo administrativo.</summary>
 public sealed record PaginaCatalogoResponse<T>(IReadOnlyList<T> Elementos, int Pagina, int TamanoPagina, int Total, int TotalPaginas);
 /// <summary>Aeropuerto administrativo, con estado y versión.</summary>
-public sealed record AeropuertoAdminResponse(int AeropuertoId, string CodigoIata, string Nombre, string Ciudad, string Pais,
+public sealed record AeropuertoAdminResponse(int AeropuertoId, string CodigoIata, string Nombre, string? Ciudad, string Pais,
     bool Activo, DateTimeOffset? FechaDesactivacion, string RowVersion, MetadatosAeropuertoResponse? Metadatos = null);
 /// <summary>Avión administrativo, con estado y versión.</summary>
 public sealed record AvionAdminResponse(int AvionId, string Modelo, string Matricula, int CapacidadTotal,
