@@ -1,0 +1,21 @@
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Vuelos_Backend.Models.Catalogos.DTOs;
+using Vuelos_Backend.Services.Catalogos;
+internal static class ValidarCsvLaboratorio
+{
+    public static async Task<int> Main()
+    {
+        const string file=@"C:\Users\Josue\Desktop\Aplicaciones Ditribuidas\Proyecto\Vuelos_Backend\Vuelos_Backend\docs\airports_laboratorio\airports_laboratorio.csv";
+        using var stream=File.OpenRead(file);
+        var result=await new ImportacionAeropuertosService(new MemoryCatalogosRepository()).ValidarAsync(new ImportarAeropuertosRequest{
+            Archivo=new FormFile(stream,0,stream.Length,"Archivo","airports_laboratorio.csv"),SoloServicioRegular=false,OmitirIncompletos=false
+        },CancellationToken.None);
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new{result.TotalRegistros,result.TotalImportables,result.TotalErrores,result.TotalOmitidos,result.PuedeImportar}));
+        if(result.TotalImportables!=8799||result.TotalErrores!=0||!result.PuedeImportar)throw new Exception("CSV de laboratorio no válido.");
+        Console.WriteLine("Validación real del importador con repositorio vacío simulado; sin guardar en base.");return 0;
+    }
+}

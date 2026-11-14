@@ -37,7 +37,7 @@
         </member>
         <member name="M:Vuelos_Backend.Controllers.Administracion.ImportacionAeropuertosController.Importar(Vuelos_Backend.Models.Catalogos.DTOs.ImportarAeropuertosRequest,System.Threading.CancellationToken)">
             <summary>Importa toda la selección en una transacción. No sobrescribe ni duplica códigos IATA existentes.</summary>
-            <remarks>Reenviar archivo y filtros revisados. Pagina/TamanoPagina afectan solo la respuesta. 200 importado/ya_importados; 400 errores; 409 códigos parcialmente registrados. No importa únicamente la página visible.</remarks>
+            <remarks>Reenviar archivo y filtros revisados. Pagina/TamanoPagina afectan solo la respuesta. Los IATA existentes se omiten automáticamente, incluso si están inactivos. 200 importado/ya_importados; 400 errores reales. No importa únicamente la página visible.</remarks>
         </member>
         <member name="M:Vuelos_Backend.Controllers.Administracion.ImportacionAvionesController.Validar(Vuelos_Backend.Models.Catalogos.DTOs.ImportarAvionesRequest,System.Threading.CancellationToken)">
             <summary>Valida CSV y categorías, sin guardar datos. Devuelve filas, errores y matrículas registradas.</summary>
@@ -336,10 +336,10 @@
             <summary>Error localizado por línea física inicial del registro. Fila 1 representa encabezados o límites globales.</summary>
         </member>
         <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.ImportacionAeropuertosResponse">
-            <summary>Resultado global con vista previa paginada, conteo explícito de omisiones y hasta 200 errores.</summary>
+            <summary>Resultado global. TotalImportables cuenta nuevos candidatos; TotalExistentes cuenta los omitidos por IATA ya registrado y está incluido en TotalOmitidos. Filas/TotalPaginas incluyen candidatos válidos nuevos y existentes. Hasta 200 errores reales.</summary>
         </member>
         <member name="M:Vuelos_Backend.Models.Catalogos.DTOs.ImportacionAeropuertosResponse.#ctor(System.String,System.String,System.Boolean,System.Int32,System.Int32,System.Int32,System.Int32,System.Boolean,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Catalogos.DTOs.FilaImportacionAeropuertoResponse},System.Collections.Generic.IReadOnlyList{Vuelos_Backend.Models.Catalogos.DTOs.ErrorImportacionAeropuertoResponse},System.Collections.Generic.IReadOnlyDictionary{System.String,System.Int32})">
-            <summary>Resultado global con vista previa paginada, conteo explícito de omisiones y hasta 200 errores.</summary>
+            <summary>Resultado global. TotalImportables cuenta nuevos candidatos; TotalExistentes cuenta los omitidos por IATA ya registrado y está incluido en TotalOmitidos. Filas/TotalPaginas incluyen candidatos válidos nuevos y existentes. Hasta 200 errores reales.</summary>
         </member>
         <member name="T:Vuelos_Backend.Models.Catalogos.DTOs.ImportarAvionesRequest">
             <summary>CSV UTF-8 separado por punto y coma y categorías activas elegidas por el administrador.</summary>

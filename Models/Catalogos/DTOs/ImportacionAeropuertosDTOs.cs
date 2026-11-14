@@ -20,7 +20,7 @@ public sealed record FilaImportacionAeropuertoResponse(int Fila, string CodigoIa
 /// <summary>Error localizado por línea física inicial del registro. Fila 1 representa encabezados o límites globales.</summary>
 public sealed record ErrorImportacionAeropuertoResponse(int Fila, string Campo, string Mensaje);
 
-/// <summary>Resultado global con vista previa paginada, conteo explícito de omisiones y hasta 200 errores.</summary>
+/// <summary>Resultado global. TotalImportables cuenta nuevos candidatos; TotalExistentes cuenta los omitidos por IATA ya registrado y está incluido en TotalOmitidos. Filas/TotalPaginas incluyen candidatos válidos nuevos y existentes. Hasta 200 errores reales.</summary>
 public sealed record ImportacionAeropuertosResponse(string Estado, string Mensaje, bool PuedeImportar,
     int TotalRegistros, int TotalImportables, int TotalOmitidos, int TotalErrores, bool ErroresTruncados,
     int TotalExistentes, int AeropuertosImportados, int Pagina, int TamanoPagina, int TotalPaginas,

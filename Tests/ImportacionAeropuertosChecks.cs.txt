@@ -55,11 +55,18 @@ internal static class ImportacionAeropuertosChecks
         var before=repo.Created;
         var repeated=await service.ImportarAsync(Request(csv),Ct);
         Check(repeated.Estado=="ya_importados" && repeated.Mensaje.Contains("ya se importaron") && repeated.AeropuertosImportados==0 && repo.Created==before,"repetición informa sin duplicar");
+        Check(repeated.TotalImportables==0 && repeated.TotalExistentes==2 && repeated.TotalOmitidos==2 && repeated.TotalErrores==0,"todos existentes se cuentan como omitidos, no errores");
         Check((await service.ValidarAsync(Request(Header+Row.Replace("UIO"," uio ")),Ct)).Estado=="ya_importados","IATA normalizado");
-        var mixed=await service.ImportarAsync(Request(csv+Row.Replace("UIO","CUE")),Ct);
-        Check(mixed.Estado=="conflicto_codigos" && mixed.TotalExistentes==2 && mixed.AeropuertosImportados==0 && repo.Created==before,"parcialmente existentes bloquean toda escritura");
+        var mixedCsv=csv+Row.Replace("UIO","CUE");
+        var mixedPreview=await service.ValidarAsync(Request(mixedCsv),Ct);
+        Check(mixedPreview.PuedeImportar && mixedPreview.Estado=="valido" && mixedPreview.TotalImportables==1 && mixedPreview.TotalExistentes==2 && mixedPreview.TotalOmitidos==2 && mixedPreview.TotalErrores==0 && repo.Created==before,"vista previa omite existentes y permite nuevos sin escritura");
+        var mixed=await service.ImportarAsync(Request(mixedCsv),Ct);
+        Check(mixed.Estado=="importado" && mixed.TotalExistentes==2 && mixed.TotalImportables==1 && mixed.AeropuertosImportados==1 && mixed.TotalOmitidos==2 && mixed.TotalErrores==0 && repo.Created==before+1,"importación mixta guarda solo nuevos y conserva contadores");
+        Check(mixed.ResumenOmisiones["iata_ya_registrado"]==2 && mixed.Filas.All(f=>f.AeropuertoId>0),"vista posterior conserva IDs existentes y asigna nuevos");
         var old=(await repo.ObtenerAsync<Aeropuerto>(1,Ct))!;old.Activo=false;await repo.ActualizarFixtureAsync(old,Ct);
         Check((await service.ValidarAsync(Request(Header+Row),Ct)).Estado=="ya_importados","IATA de inactivo no se reutiliza");
+        var withInactive=await service.ImportarAsync(Request(Header+Row+Row.Replace("UIO","ABC")),Ct);
+        Check(withInactive.AeropuertosImportados==1 && withInactive.TotalExistentes==1 && !(await repo.ObtenerAsync<Aeropuerto>(1,Ct))!.Activo,"mezcla omite inactivo sin reactivarlo");
 
         var clean=new MemoryCatalogosRepository();var parser=new ImportacionAeropuertosService(clean);
         var filters=Header+Row+Row.Replace("large_airport","heliport")+Row.Replace("yes","no")+Row.Replace("UIO","")+Row.Replace("EC","US").Replace("UIO","JFK");
@@ -184,7 +191,9 @@ internal static class ImportacionAeropuertosChecks
         Check(sinCiudad.StatusCode==HttpStatusCode.OK && (await sinCiudad.Content.ReadFromJsonAsync<ImportacionAeropuertosResponse>())!.Filas.Single().Ciudad is null,"importación HTTP conserva ciudad NULL");
         Check((await Send(path)).StatusCode==HttpStatusCode.OK,"confirmación HTTP 200");
         var repeat=await Send(path);Check((await repeat.Content.ReadFromJsonAsync<ImportacionAeropuertosResponse>())!.Estado=="ya_importados","repetición HTTP sin duplicar");
-        Check((await Send(path,Header+Row+Row.Replace("UIO","GYE"))).StatusCode==HttpStatusCode.Conflict,"conflicto parcial HTTP 409");
+        var mixedHttp=await Send(path,Header+Row+Row.Replace("UIO","GYE"));
+        var mixedBody=(await mixedHttp.Content.ReadFromJsonAsync<ImportacionAeropuertosResponse>())!;
+        Check(mixedHttp.StatusCode==HttpStatusCode.OK && mixedBody.Estado=="importado" && mixedBody.AeropuertosImportados==1 && mixedBody.TotalExistentes==1 && mixedBody.TotalOmitidos==1 && mixedBody.TotalErrores==0,"mezcla HTTP 200 importa nuevo y omite existente");
         Check((await http.PostAsJsonAsync("/api/admin/aeropuertos",new{})).StatusCode==HttpStatusCode.MethodNotAllowed,"alta manual retirada");
         Check((await http.PutAsJsonAsync("/api/admin/aeropuertos/1",new{})).StatusCode==HttpStatusCode.MethodNotAllowed,"edición manual retirada");
         Check((await http.PostAsJsonAsync("/api/admin/aeropuertos/1/desactivacion",new{})).StatusCode==HttpStatusCode.NotFound,"desactivación manual retirada");
