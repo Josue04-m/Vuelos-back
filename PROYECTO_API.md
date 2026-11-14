@@ -2,6 +2,8 @@
 
 ## 1. Propósito y alcance
 
+Módulo administrativo de mapa de vuelos: listado paginado de todos los estados con filtros ISO de países de origen/destino y ordenamiento; consulta `GET /api/admin/vuelos/{id}/recorrido` con coordenadas WGS84 existentes y banderas a partir de ISO. Mantener rol admin, rutas/contratos públicos y operaciones de escritura. El recorrido es ilustrativo, sin posición real del avión. La visualización se implementa en Flutter. Contrato: `docs/FLUTTER_MAPA_VUELOS_ADMIN.md`; no requiere cambios de esquema ni dependencias nuevas.
+
 Actualización de importación de aeropuertos: omitir automáticamente IATA existentes, incluidos los inactivos, y guardar solo nuevos bajo la transacción y bloqueo administrativo existentes. No sobrescribir ni reactivar registros. Contar existentes como omisiones `iata_ya_registrado`, sin errores. La carga mixta deja de responder `conflicto_codigos`; si todos existen, responder `ya_importados`. No requiere migración. Ver `IMPORTACION_AEROPUERTOS.md`.
 
 Actualización de importación: `ciudad` de aeropuerto es opcional y se conserva como NULL si `municipality` está vacío o indica `\N`. Modelo, DTOs e importador están adaptados; aplicar manualmente la migración PostgreSQL `CiudadAeropuertoOpcional` o `Data/Scripts/Supabase_CiudadAeropuertoOpcional.sql`. IATA, nombre y país mantienen sus validaciones. Ver `IMPORTACION_AEROPUERTOS.md`.

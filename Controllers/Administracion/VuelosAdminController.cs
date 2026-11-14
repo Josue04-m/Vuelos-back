@@ -16,15 +16,29 @@ namespace Vuelos_Backend.Controllers.Administracion;
 [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
 [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
 [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
-public sealed class VuelosAdminController(IVueloAdminService administracion, IVueloService consultas) : ControllerBase
+public sealed class VuelosAdminController(IVueloAdminService administracion, IConsultaVuelosAdminService consultas) : ControllerBase
 {
-    /// <summary>Lista vuelos de todos los estados, con filtros y paginación.</summary>
+    /// <summary>Lista vuelos de todos los estados, con filtros por IATA, países ISO, fechas y ordenamiento paginado.</summary>
+    /// <remarks>paisOrigen y paisDestino pueden ser iguales para vuelos nacionales. ordenarPor: fechaSalida, numeroVuelo, paisOrigen o paisDestino. direccion: asc o desc. No excluye vuelos cancelados ni finalizados.</remarks>
     [HttpGet]
     [ProducesResponseType<PaginaVuelosResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<PaginaVuelosResponse>> Buscar(
-        [FromQuery] BusquedaVuelosRequest request, CancellationToken cancellationToken) =>
+        [FromQuery] BusquedaVuelosAdminRequest request, CancellationToken cancellationToken) =>
         Ok(await consultas.BuscarAsync(request, cancellationToken));
+
+    /// <summary>Obtiene origen, destino y coordenadas para un mapa orientativo del recorrido. Solo administrador.</summary>
+    /// <remarks>No representa la trayectoria real ni seguimiento del avión. Si faltan coordenadas devuelve 200 con puedeMostrarRecorrido=false y un motivo; no elimina el vuelo del listado.</remarks>
+    [HttpGet("{id:int}/recorrido")]
+    [ProducesResponseType<RecorridoVueloAdminResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<RecorridoVueloAdminResponse>> ObtenerRecorrido(
+        [Range(1, int.MaxValue)] int id, CancellationToken cancellationToken)
+    {
+        var recorrido = await consultas.ObtenerRecorridoAsync(id, cancellationToken);
+        return recorrido is null ? Problem(statusCode: StatusCodes.Status404NotFound, title: "Vuelo no encontrado") : Ok(recorrido);
+    }
 
     /// <summary>Consulta un vuelo y la versión necesaria para editar su programación.</summary>
     [HttpGet("{id:int}")]

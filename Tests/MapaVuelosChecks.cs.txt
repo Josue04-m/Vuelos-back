@@ -1,0 +1,205 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Reflection;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Vuelos_Backend.Authentication;
+using Vuelos_Backend.Controllers.Administracion;
+using Vuelos_Backend.Data;
+using Vuelos_Backend.Interface.Vuelos;
+using Vuelos_Backend.Models.Aeropuertos;
+using Vuelos_Backend.Models.Asientos;
+using Vuelos_Backend.Models.Vuelos;
+using Vuelos_Backend.Models.Vuelos.DTOs;
+using Vuelos_Backend.Repositories.Vuelos;
+using Vuelos_Backend.Services.Vuelos;
+using Vuelos_Backend.Swagger;
+
+internal static class MapaVuelosChecks
+{
+    private static int count;
+    private static readonly CancellationToken Ct=CancellationToken.None;
+    private static void Check(bool ok,string message){if(!ok)throw new Exception(message);count++;}
+    public static async Task RunAsync()
+    {
+        await ServiceChecks();SqlChecks();await HttpChecks();
+        Console.WriteLine($"OK: {count} comprobaciones de mapa administrativo; HTTP, geometría de extremos y SQL generado, sin base real.");
+    }
+    private static Vuelo Flight(int id=1)=>new(){VueloId=id,NumeroVuelo="PN100",Estado="programado",SalidaProgramada=new DateTime(2030,1,1,12,0,0,DateTimeKind.Utc),
+        LlegadaProgramada=new DateTime(2030,1,1,14,0,0,DateTimeKind.Utc),AvionId=1,Avion=new(){AvionId=1,Modelo="Prueba",CapacidadTotal=2},
+        AeropuertoOrigen=new(){AeropuertoId=1,CodigoIata="UIO",Nombre="Mariscal Sucre",Ciudad="Quito",Pais="EC",Latitud=-0.1292,Longitud=-78.3575},
+        AeropuertoDestino=new(){AeropuertoId=2,CodigoIata="BOG",Nombre="El Dorado",Ciudad="Bogotá",Pais="CO",Latitud=4.7016,Longitud=-74.1469}};
+    private static async Task ServiceChecks()
+    {
+        var repo=new ReadRepo();var service=new ConsultaVuelosAdminService(repo,TimeProvider.System);
+        var page=await service.BuscarAsync(new(){Origen="uio",Destino="bog",PaisOrigen="ec",PaisDestino="co",FechaDesde=new(2030,1,1),FechaHasta=new(2030,1,2),OrdenarPor="paisDestino",Direccion="desc",Pagina=2,TamanoPagina=5},Ct);
+        var f=repo.Last!;
+        Check(f.Origen=="UIO"&&f.Destino=="BOG"&&f.PaisOrigen=="EC"&&f.PaisDestino=="CO","normaliza países e IATA");
+        Check(f.SalidaDesdeUtc==new DateTime(2030,1,1,0,0,0,DateTimeKind.Utc)&&f.SalidaHastaUtcExclusiva==new DateTime(2030,1,3,0,0,0,DateTimeKind.Utc),"rango UTC incluido hasta el último día");
+        Check(f.OrdenarPor=="paisDestino"&&f.Descendente&&page.Pagina==2&&page.TamanoPagina==5&&page.Total==21&&page.TotalPaginas==5,"orden y totales paginados");
+        Check(page.Vuelos.Select(v=>v.Estado).Contains("cancelado")&&page.Vuelos.Select(v=>v.Estado).Contains("finalizado"),"conserva estados no reservables en administración");
+        await service.BuscarAsync(new(){Fecha=new(2030,1,1)},Ct);
+        Check(repo.Last!.PaisOrigen is null&&repo.Last.PaisDestino is null&&repo.Last.OrdenarPor=="fechaSalida"&&!repo.Last.Descendente,"sin filtros por país ni orden impuesto al no solicitarlos");
+        await service.BuscarAsync(new(){Fecha=DateOnly.MaxValue},Ct);
+        Check(repo.Last!.SalidaHastaUtcExclusiva is null,"fecha máxima sin overflow");
+        var route=(await service.ObtenerRecorridoAsync(1,Ct))!;
+        Check(route.PuedeMostrarRecorrido&&route.MotivoNoDisponible is null&&route.CruzaAntimeridiano==false,"recorrido disponible");
+        Check(route.Origen.Pais=="EC"&&route.Destino.Pais=="CO"&&route.Origen.Latitud==-0.1292&&route.Destino.Longitud==-74.1469,"extremos, sentido y países para banderas");
+        Check(!route.EsSeguimientoEnTiempoReal&&route.TipoRecorrido=="orientativo_entre_aeropuertos","no inventa telemetría");
+        Check(await service.ObtenerRecorridoAsync(999,Ct) is null,"inexistente devuelve null al controlador");
+        repo.Flight.AeropuertoDestino.Latitud=null;
+        route=(await service.ObtenerRecorridoAsync(1,Ct))!;
+        Check(!route.PuedeMostrarRecorrido&&route.MotivoNoDisponible=="coordenadas_destino_no_disponibles"&&route.CruzaAntimeridiano is null,"destino sin coordenadas");
+        Check(route.Origen.CoordenadasDisponibles&&route.Destino.Latitud is null&&route.Destino.Longitud is null,"no sustituye pareja incompleta por cero");
+        repo.Flight.AeropuertoOrigen.Longitud=null;
+        route=(await service.ObtenerRecorridoAsync(1,Ct))!;
+        Check(route.MotivoNoDisponible=="coordenadas_origen_y_destino_no_disponibles","ambos extremos faltantes");
+        repo.Flight=Flight();repo.Flight.AeropuertoOrigen.Latitud=null;
+        Check((await service.ObtenerRecorridoAsync(1,Ct))!.MotivoNoDisponible=="coordenadas_origen_no_disponibles","origen incompleto");
+        foreach(var invalid in new[]{double.NaN,double.PositiveInfinity,double.NegativeInfinity,91d,-91d})
+        {
+            repo.Flight=Flight();repo.Flight.AeropuertoOrigen.Latitud=invalid;
+            route=(await service.ObtenerRecorridoAsync(1,Ct))!;
+            Check(!route.PuedeMostrarRecorrido&&route.Origen.Latitud is null,"latitud inválida sanitizada");
+            Check(!JsonSerializer.Serialize(route).Contains("NaN"),"JSON válido sin números no finitos");
+        }
+        foreach(var invalid in new[]{181d,-181d,double.NaN})
+        {
+            repo.Flight=Flight();repo.Flight.AeropuertoDestino.Longitud=invalid;
+            Check(!(await service.ObtenerRecorridoAsync(1,Ct))!.PuedeMostrarRecorrido,"longitud fuera de rango");
+        }
+        repo.Flight=Flight();repo.Flight.AeropuertoOrigen.Longitud=179;repo.Flight.AeropuertoDestino.Longitud=-179;
+        Check((await service.ObtenerRecorridoAsync(1,Ct))!.CruzaAntimeridiano==true,"señala cruce 179 a -179");
+        repo.Flight.AeropuertoOrigen.Longitud=-179;repo.Flight.AeropuertoDestino.Longitud=179;
+        Check((await service.ObtenerRecorridoAsync(1,Ct))!.CruzaAntimeridiano==true,"señala cruce en ambos sentidos");
+        repo.Flight.AeropuertoOrigen.Latitud=0;repo.Flight.AeropuertoOrigen.Longitud=0;
+        repo.Flight.AeropuertoDestino.Latitud=0;repo.Flight.AeropuertoDestino.Longitud=0;
+        Check((await service.ObtenerRecorridoAsync(1,Ct))!.PuedeMostrarRecorrido,"cero es coordenada válida, no faltante");
+        repo.Flight.AeropuertoOrigen.Latitud=90;repo.Flight.AeropuertoOrigen.Longitud=180;
+        repo.Flight.AeropuertoDestino.Latitud=-90;repo.Flight.AeropuertoDestino.Longitud=-180;
+        Check((await service.ObtenerRecorridoAsync(1,Ct))!.PuedeMostrarRecorrido,"límites de WGS84 válidos");
+        repo.Flight.AeropuertoOrigen.Activo=false;repo.Flight.AeropuertoOrigen.Ciudad=null;
+        Check((await service.ObtenerRecorridoAsync(1,Ct))!.Origen.Ciudad is null,"histórico con aeropuerto inactivo y ciudad null no desaparece");
+    }
+    private static void SqlChecks()
+    {
+        using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=unused.invalid;Database=unused;Username=unused;Password=unused").Options);
+        var repo=new VueloRepository(db);var type=typeof(VueloRepository);
+        var method=type.GetMethod("AplicarFiltros",BindingFlags.Instance|BindingFlags.NonPublic)!;
+        var filter=new FiltroVuelos("UIO","BOG",new DateTime(2030,1,1,0,0,0,DateTimeKind.Utc),new DateTime(2030,2,1,0,0,0,DateTimeKind.Utc),2,20,"EC","CO");
+        var query=(IQueryable<Vuelo>)method.Invoke(repo,new object[]{filter})!;
+        var sql=query.ToQueryString();
+        Check(sql.Contains("upper(")&&sql.Contains("pais")&&sql.Contains("EC")&&sql.Contains("CO"),"filtra por ambos países en SQL");
+        Check(sql.Contains("codigo_iata")&&sql.Contains("salida_programada")&&sql.Contains("WHERE"),"combina filtros de IATA y fechas");
+        var where=sql[(sql.IndexOf("WHERE",StringComparison.Ordinal))..];
+        Check(!where.Contains("estado")&&!where.Contains("activo"),"no excluye estados ni aeropuertos históricos en consultas administrativas");
+        var order=type.GetMethod("AplicarOrden",BindingFlags.Static|BindingFlags.NonPublic)!;
+        foreach(var key in new[]{"fechaSalida","numeroVuelo","paisOrigen","paisDestino"})foreach(var desc in new[]{false,true})
+        {
+            var sorted=(IQueryable<Vuelo>)order.Invoke(null,new object[]{query,filter with{OrdenarPor=key,Descendente=desc}})!;
+            var orderedSql=sorted.Skip(20).Take(20).ToQueryString();
+            Check(orderedSql.Contains("ORDER BY")&&orderedSql.Contains("vuelo_id")&&orderedSql.Contains("LIMIT")&&orderedSql.Contains("OFFSET"),"orden estable y paginación SQL "+key);
+            Check(!desc||orderedSql.Contains("DESC"),"dirección descendente SQL "+key);
+        }
+        var first=Flight(2);var second=Flight(1);second.NumeroVuelo="PN050";first.NumeroVuelo="PN050";
+        var tied=(IQueryable<Vuelo>)order.Invoke(null,new object[]{new[]{first,second}.AsQueryable(),filter with{OrdenarPor="numeroVuelo"}})!;
+        Check(tied.First().VueloId==1,"desempate por identificador en misma fecha y número");
+        var one=Flight(1);one.NumeroVuelo="PN300";
+        var two=Flight(2);two.NumeroVuelo="PN100";two.SalidaProgramada=one.SalidaProgramada.AddDays(1);two.AeropuertoOrigen.Pais="US";two.AeropuertoDestino.Pais="EC";
+        var three=Flight(3);three.NumeroVuelo="PN200";three.SalidaProgramada=one.SalidaProgramada.AddDays(2);three.AeropuertoOrigen.Pais="CO";three.AeropuertoDestino.Pais="US";
+        foreach(var scenario in new[]{("fechaSalida",false,new[]{1,2,3}),("fechaSalida",true,new[]{3,2,1}),
+            ("numeroVuelo",false,new[]{2,3,1}),("numeroVuelo",true,new[]{1,3,2}),
+            ("paisOrigen",false,new[]{3,1,2}),("paisOrigen",true,new[]{2,1,3}),
+            ("paisDestino",false,new[]{1,2,3}),("paisDestino",true,new[]{3,2,1})})
+        {
+            var sorted=(IQueryable<Vuelo>)order.Invoke(null,new object[]{new[]{three,one,two}.AsQueryable(),filter with{OrdenarPor=scenario.Item1,Descendente=scenario.Item2}})!;
+            Check(sorted.Select(v=>v.VueloId).SequenceEqual(scenario.Item3),"orden funcional de cada columna y dirección "+scenario.Item1+scenario.Item2);
+        }
+        Check(db.Database.GetDbConnection().State==System.Data.ConnectionState.Closed,"SQL generado sin abrir conexión");
+    }
+    private static async Task HttpChecks()
+    {
+        var repo=new ReadRepo();var builder=WebApplication.CreateBuilder();builder.Logging.ClearProviders();builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddSingleton<IVueloRepository>(repo);builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddScoped<IConsultaVuelosAdminService,ConsultaVuelosAdminService>();
+        builder.Services.AddSingleton<IVueloAdminRepository>(new MemoryRepo());
+        builder.Services.AddScoped<IVueloAdminService,VueloAdminService>();
+        builder.Services.AddSingleton<IVueloService,Consultas>();
+        builder.Services.AddControllers().AddApplicationPart(typeof(VuelosAdminController).Assembly);
+        builder.Services.AddAuthentication("test").AddScheme<AuthenticationSchemeOptions,RoleAuth>("test",_=>{});
+        builder.Services.AddAuthorization(PoliticasAcceso.Configurar);builder.Services.AddEndpointsApiExplorer();builder.Services.AddSwaggerGen(DocumentacionApi.Configurar);
+        await using var app=builder.Build();app.UseSwagger();app.UseAuthentication();app.UseAuthorization();app.MapControllers();await app.StartAsync();
+        using var http=new HttpClient{BaseAddress=new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
+        foreach(var role in new[]{"","cliente"})
+        {
+            http.DefaultRequestHeaders.Remove("Authorization");if(role!="")http.DefaultRequestHeaders.Add("Authorization","Bearer "+role);
+            foreach(var route in new[]{"/api/admin/vuelos","/api/admin/vuelos/1/recorrido","/api/admin/vuelos/999/recorrido"})
+                Check((await http.GetAsync(route)).StatusCode==(role==""?HttpStatusCode.Unauthorized:HttpStatusCode.Forbidden),"permiso de mapa "+role+route);
+        }
+        http.DefaultRequestHeaders.Remove("Authorization");http.DefaultRequestHeaders.Add("Authorization","Bearer admin");
+        using(var response=await http.GetAsync("/api/admin/vuelos?paisOrigen=ec&paisDestino=co&ordenarPor=numeroVuelo&direccion=desc"))
+        {
+            Check(response.StatusCode==HttpStatusCode.OK,"admin consulta filtros nuevos");
+            using var json=JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Check(json.RootElement.TryGetProperty("vuelos",out _)&&json.RootElement.TryGetProperty("totalPaginas",out _)&&!json.RootElement.TryGetProperty("elementos",out _),"conserva contrato paginado existente");
+            Check(repo.Last!.PaisOrigen=="EC"&&repo.Last.PaisDestino=="CO"&&repo.Last.Descendente,"filtros HTTP llegan normalizados a repositorio");
+        }
+        using(var response=await http.GetAsync("/api/admin/vuelos/1/recorrido"))
+        {
+            Check(response.StatusCode==HttpStatusCode.OK,"recorrido HTTP admin");
+            using var json=JsonDocument.Parse(await response.Content.ReadAsStringAsync());var r=json.RootElement;
+            Check(r.GetProperty("puedeMostrarRecorrido").GetBoolean()&&r.GetProperty("origen").GetProperty("pais").GetString()=="EC","JSON mapa y banderas");
+            Check(!r.GetProperty("esSeguimientoEnTiempoReal").GetBoolean(),"contrato informa recorrido ilustrativo");
+            Check(!r.GetRawText().Contains("usuarioId")&&!r.GetRawText().Contains("pasajeros")&&!r.GetRawText().Contains("cedula"),"mapa no expone pasajeros ni reservas");
+        }
+        repo.Flight.AeropuertoDestino.Longitud=null;
+        using(var response=await http.GetAsync("/api/admin/vuelos/1/recorrido"))
+        {
+            Check(response.StatusCode==HttpStatusCode.OK,"sin coordenadas no desaparece vuelo");
+            using var json=JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Check(!json.RootElement.GetProperty("puedeMostrarRecorrido").GetBoolean()&&json.RootElement.GetProperty("destino").GetProperty("longitud").ValueKind==JsonValueKind.Null,"JSON sin coordenadas consistente");
+        }
+        Check((await http.GetAsync("/api/admin/vuelos/999/recorrido")).StatusCode==HttpStatusCode.NotFound,"404 de recorrido inexistente");
+        foreach(var path in new[]{"/api/admin/vuelos/0/recorrido","/api/admin/vuelos?paisOrigen=Ecuador","/api/admin/vuelos?paisDestino=C1","/api/admin/vuelos?ordenarPor=precio","/api/admin/vuelos?direccion=arriba","/api/admin/vuelos?pagina=0","/api/admin/vuelos?tamanoPagina=101","/api/admin/vuelos?pagina=2147483647&tamanoPagina=100","/api/admin/vuelos?fechaDesde=2030-01-01","/api/admin/vuelos?fechaDesde=2030-02-01&fechaHasta=2030-01-01","/api/admin/vuelos?fecha=2030-01-01&fechaDesde=2030-01-01&fechaHasta=2030-01-02","/api/admin/vuelos?origen=UIO&destino=UIO","/api/admin/vuelos?origen=12A"})
+        {
+            using var response=await http.GetAsync(path);Check(response.StatusCode==HttpStatusCode.BadRequest,"validación HTTP "+path);
+            using var json=JsonDocument.Parse(await response.Content.ReadAsStringAsync());Check(json.RootElement.TryGetProperty("errors",out _),"400 conserva ValidationProblemDetails");
+        }
+        Check((await http.GetAsync("/api/admin/vuelos?paisOrigen=EC&paisDestino=EC")).StatusCode==HttpStatusCode.OK,"permite vuelos nacionales");
+        repo.Total=0;repo.Rows=[];
+        using(var response=await http.GetAsync("/api/admin/vuelos?paisOrigen=ZZ&pagina=2"))
+        {using var json=JsonDocument.Parse(await response.Content.ReadAsStringAsync());Check(response.StatusCode==HttpStatusCode.OK&&json.RootElement.GetProperty("vuelos").GetArrayLength()==0&&json.RootElement.GetProperty("total").GetInt32()==0,"sin resultados o página vacía es 200");}
+        using(var json=JsonDocument.Parse(await http.GetStringAsync("/swagger/v1/swagger.json")))
+        {
+            var paths=json.RootElement.GetProperty("paths");var route=paths.GetProperty("/api/admin/vuelos/{id}/recorrido").GetProperty("get");
+            Check(!route.TryGetProperty("security",out var security)||security.GetArrayLength()>0,"Swagger no marca mapa como anónimo");
+            Check(route.GetProperty("responses").TryGetProperty("401",out _)&&route.GetProperty("responses").TryGetProperty("403",out _)&&route.GetProperty("responses").TryGetProperty("404",out _),"Swagger documenta errores de mapa");
+            var adminParams=paths.GetProperty("/api/admin/vuelos").GetProperty("get").GetProperty("parameters").EnumerateArray().Select(p=>p.GetProperty("name").GetString()).ToArray();
+            Check(new[]{"PaisOrigen","PaisDestino","OrdenarPor","Direccion"}.All(n=>adminParams.Any(p=>string.Equals(p,n,StringComparison.OrdinalIgnoreCase))),"Swagger documenta países y orden");
+            var publicParams=paths.GetProperty("/api/vuelos").GetProperty("get").GetProperty("parameters").EnumerateArray().Select(p=>p.GetProperty("name").GetString()).ToArray();
+            Check(!publicParams.Any(p=>string.Equals(p,"PaisOrigen",StringComparison.OrdinalIgnoreCase)),"contrato público no recibe filtros administrativos nuevos");
+        }
+    }
+    private sealed class ReadRepo : IVueloRepository
+    {
+        public Vuelo Flight=MapaVuelosChecks.Flight();public FiltroVuelos? Last;public int Total=21;
+        public IReadOnlyList<Vuelo> Rows;
+        public ReadRepo(){var cancelado=MapaVuelosChecks.Flight(2);cancelado.Estado="cancelado";var finalizado=MapaVuelosChecks.Flight(3);finalizado.Estado="finalizado";Rows=new[]{MapaVuelosChecks.Flight(),cancelado,finalizado};}
+        public Task<ResultadoBusquedaVuelos> BuscarAsync(FiltroVuelos filtro,CancellationToken ct){Last=filtro;return Task.FromResult(new ResultadoBusquedaVuelos(Rows,Total));}
+        public Task<Vuelo?> ObtenerAsync(int id,CancellationToken ct)=>Task.FromResult<Vuelo?>(id==1?Flight:null);
+        public Task<IReadOnlyList<AsientoVuelo>> ListarAsientosAsync(int id,CancellationToken ct)=>throw new Exception("Mapa no debe consultar asientos");
+    }
+}

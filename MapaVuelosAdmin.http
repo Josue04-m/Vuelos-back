@@ -1,0 +1,43 @@
+@baseUrl = http://localhost:5236
+@tokenAdmin = PEGAR_TOKEN_ADMIN
+@tokenCliente = PEGAR_TOKEN_CLIENTE
+@vueloId = 1
+
+### Todos los vuelos y estados, sin filtros, orden por salida ascendente
+GET {{baseUrl}}/api/admin/vuelos?pagina=1&tamanoPagina=20
+Authorization: Bearer {{tokenAdmin}}
+
+### Origen Ecuador, destino Colombia; ordenar por país de destino
+GET {{baseUrl}}/api/admin/vuelos?paisOrigen=EC&paisDestino=CO&ordenarPor=paisDestino&direccion=asc&pagina=1&tamanoPagina=20
+Authorization: Bearer {{tokenAdmin}}
+
+### País solo de origen; rango de días UTC completo e inclusivo
+GET {{baseUrl}}/api/admin/vuelos?paisOrigen=EC&fechaDesde=2030-01-01&fechaHasta=2030-01-31&ordenarPor=fechaSalida&direccion=desc
+Authorization: Bearer {{tokenAdmin}}
+
+### Vuelos nacionales; no se exige que sean reservables
+GET {{baseUrl}}/api/admin/vuelos?paisOrigen=EC&paisDestino=EC&ordenarPor=numeroVuelo&direccion=asc
+Authorization: Bearer {{tokenAdmin}}
+
+### Filtrar por aeropuertos concretos, conservando el contrato anterior
+GET {{baseUrl}}/api/admin/vuelos?origen=UIO&destino=BOG
+Authorization: Bearer {{tokenAdmin}}
+
+### Selección de vuelo: extremos del recorrido y disponibilidad de coordenadas
+GET {{baseUrl}}/api/admin/vuelos/{{vueloId}}/recorrido
+Authorization: Bearer {{tokenAdmin}}
+
+### Inexistente: 404 (sustituir por un ID que no exista)
+GET {{baseUrl}}/api/admin/vuelos/2147483647/recorrido
+Authorization: Bearer {{tokenAdmin}}
+
+### Orden inválido: 400
+GET {{baseUrl}}/api/admin/vuelos?ordenarPor=precio
+Authorization: Bearer {{tokenAdmin}}
+
+### Sin sesión: 401
+GET {{baseUrl}}/api/admin/vuelos/{{vueloId}}/recorrido
+
+### Sesión cliente: 403
+GET {{baseUrl}}/api/admin/vuelos/{{vueloId}}/recorrido
+Authorization: Bearer {{tokenCliente}}

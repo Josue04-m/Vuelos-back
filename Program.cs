@@ -65,6 +65,7 @@ builder.Services.AddScoped<IVueloRepository, VueloRepository>();
 builder.Services.AddScoped<IVueloService, VueloService>();
 builder.Services.AddScoped<IVueloAdminRepository, VueloAdminRepository>();
 builder.Services.AddScoped<IVueloAdminService, VueloAdminService>();
+builder.Services.AddScoped<IConsultaVuelosAdminService, ConsultaVuelosAdminService>();
 builder.Services.AddScoped<ICatalogosAdminRepository, CatalogosAdminRepository>();
 builder.Services.AddScoped<ICatalogosAdminService, CatalogosAdminService>();
 builder.Services.AddScoped<IBusquedaCatalogosRepository, BusquedaCatalogosRepository>();

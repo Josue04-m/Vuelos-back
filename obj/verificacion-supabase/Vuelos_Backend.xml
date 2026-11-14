@@ -51,8 +51,13 @@
             <summary>Consulta el total acumulado en USD y la cantidad de capturas PayPal confirmadas por entorno.</summary>
             <remarks>Por defecto Sandbox. Entorno=Live consulta cobros reales. Total bruto histórico; no descuenta reembolsos.</remarks>
         </member>
-        <member name="M:Vuelos_Backend.Controllers.Administracion.VuelosAdminController.Buscar(Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest,System.Threading.CancellationToken)">
-            <summary>Lista vuelos de todos los estados, con filtros y paginación.</summary>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.VuelosAdminController.Buscar(Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest,System.Threading.CancellationToken)">
+            <summary>Lista vuelos de todos los estados, con filtros por IATA, países ISO, fechas y ordenamiento paginado.</summary>
+            <remarks>paisOrigen y paisDestino pueden ser iguales para vuelos nacionales. ordenarPor: fechaSalida, numeroVuelo, paisOrigen o paisDestino. direccion: asc o desc. No excluye vuelos cancelados ni finalizados.</remarks>
+        </member>
+        <member name="M:Vuelos_Backend.Controllers.Administracion.VuelosAdminController.ObtenerRecorrido(System.Int32,System.Threading.CancellationToken)">
+            <summary>Obtiene origen, destino y coordenadas para un mapa orientativo del recorrido. Solo administrador.</summary>
+            <remarks>No representa la trayectoria real ni seguimiento del avión. Si faltan coordenadas devuelve 200 con puedeMostrarRecorrido=false y un motivo; no elimina el vuelo del listado.</remarks>
         </member>
         <member name="M:Vuelos_Backend.Controllers.Administracion.VuelosAdminController.Obtener(System.Int32,System.Threading.CancellationToken)">
             <summary>Consulta un vuelo y la versión necesaria para editar su programación.</summary>
@@ -482,6 +487,42 @@
         <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.ActualizarAsientoVueloAdminRequest.RowVersion">
             <summary>RowVersion del asiento en Base64 para control de concurrencia optimista.</summary>
         </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest">
+            <summary>Consulta administrativa de todos los estados, con países ISO y ordenamiento paginado.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest.Origen">
+            <summary>IATA de origen, por ejemplo UIO; opcional, tres letras.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest.Destino">
+            <summary>IATA de destino, por ejemplo BOG; opcional, tres letras.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest.Fecha">
+            <summary>Día UTC de salida en YYYY-MM-DD; no combinar con el rango.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest.FechaDesde">
+            <summary>Primer día UTC de salida incluido. Enviar también fechaHasta.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest.FechaHasta">
+            <summary>Último día UTC de salida incluido; debe ser igual o posterior a fechaDesde.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest.PaisOrigen">
+            <summary>País ISO del aeropuerto de origen, por ejemplo EC; no distingue mayúsculas.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest.PaisDestino">
+            <summary>País ISO del aeropuerto de destino, por ejemplo CO. Puede ser igual al de origen.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest.OrdenarPor">
+            <summary>fechaSalida (predeterminado), numeroVuelo, paisOrigen o paisDestino. Los países se ordenan por ISO.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest.Direccion">
+            <summary>asc (predeterminado) o desc. Los empates conservan un orden estable.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest.Pagina">
+            <summary>Página desde 1, predeterminada 1.</summary>
+        </member>
+        <member name="P:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosAdminRequest.TamanoPagina">
+            <summary>Tamaño de página entre 1 y 100, predeterminado 20.</summary>
+        </member>
         <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.BusquedaVuelosRequest">
             <summary>Filtros opcionales de salida UTC. Usar fecha o un rango completo, sin combinarlos.</summary>
         </member>
@@ -544,6 +585,18 @@
         </member>
         <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.HistorialEstadoVueloAdminResponse.#ctor(System.Int32,System.Int32,System.String,System.String,System.DateTimeOffset,System.Int32,System.String,System.String)">
             <summary>Registro histórico de cambio de estado operativo del vuelo.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoMapaAdminResponse">
+            <summary>Aeropuerto de un recorrido. País ISO para bandera; coordenadas WGS84 en grados o null si no son utilizables.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoMapaAdminResponse.#ctor(System.Int32,System.String,System.String,System.String,System.String,System.Nullable{System.Double},System.Nullable{System.Double},System.Boolean)">
+            <summary>Aeropuerto de un recorrido. País ISO para bandera; coordenadas WGS84 en grados o null si no son utilizables.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.RecorridoVueloAdminResponse">
+            <summary>Extremos de un recorrido ilustrativo. No contiene trayectoria operacional ni telemetría.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Models.Vuelos.DTOs.RecorridoVueloAdminResponse.#ctor(System.Int32,System.String,System.String,Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoMapaAdminResponse,Vuelos_Backend.Models.Vuelos.DTOs.AeropuertoMapaAdminResponse,System.Boolean,System.String,System.Nullable{System.Boolean},System.String,System.Boolean)">
+            <summary>Extremos de un recorrido ilustrativo. No contiene trayectoria operacional ni telemetría.</summary>
         </member>
         <member name="T:Vuelos_Backend.Models.Vuelos.DTOs.PasajeroVueloAdminResponse">
             <summary>Detalle de pasajero en una reserva de vuelo para administración.</summary>
@@ -610,6 +663,12 @@
         </member>
         <member name="M:Vuelos_Backend.Services.Pagos.PayPalClient.#ctor(System.Net.Http.HttpClient,Microsoft.Extensions.Options.IOptions{Vuelos_Backend.Models.Pagos.OpcionesPayPal},Microsoft.Extensions.Logging.ILogger{Vuelos_Backend.Services.Pagos.PayPalClient})">
             <summary>REST oficial Orders v2. Nunca recibe importes ni credenciales del navegador.</summary>
+        </member>
+        <member name="T:Vuelos_Backend.Services.Vuelos.ConsultaVuelosAdminService">
+            <summary>Consultas administrativas de solo lectura para listado y mapa.</summary>
+        </member>
+        <member name="M:Vuelos_Backend.Services.Vuelos.ConsultaVuelosAdminService.#ctor(Vuelos_Backend.Interface.Vuelos.IVueloRepository,System.TimeProvider)">
+            <summary>Consultas administrativas de solo lectura para listado y mapa.</summary>
         </member>
         <member name="T:Program">
             <summary>
